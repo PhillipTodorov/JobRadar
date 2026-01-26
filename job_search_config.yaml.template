@@ -4,10 +4,10 @@ api:
 search_params:
   experience_level: ''
   keywords: []
-  location: London, United Kingdom
+  location: Your City, Your Country
   posted_within_days: 30
   remote: false
   titles:
-  - Junior Software Engineer
-  - Junior Developer
-  - Graduate Developer
+  - Job Title 1
+  - Job Title 2
+  - Job Title 3

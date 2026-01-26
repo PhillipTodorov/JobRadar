@@ -1,0 +1,39 @@
+cover_letter:
+  body: ''
+  closing: ''
+  intro: ''
+personal_info:
+  email: your.email@example.com
+  full_name: Your Full Name
+  github: ''
+  linkedin: linkedin.com/in/your-profile
+  city: Your City
+  postcode: ''
+  country: Your Country
+  phone: ''
+  portfolio: ''
+questions:
+  Describe a challenging project you worked on: ''
+  Describe a time you had to learn something new quickly: ''
+  Describe your administrative experience: ''
+  Describe your relevant experience: ''
+  Describe yourself: ''
+  How do you handle tight deadlines?: ''
+  How do you prioritize tasks?: ''
+  Tell us about a time you worked in a team: ''
+  Tell us about yourself: ''
+  What are your key skills?: ''
+  What are your strengths?: ''
+  What is your greatest achievement?: ''
+  What software are you proficient in?: ''
+  Why are you interested in this role?: ''
+  Why are you leaving your current job?: ''
+  Why do you want to work here?: ''
+salary:
+  current_salary: ''
+  expected_salary: ''
+work_authorization:
+  availability: ''
+  eligible_to_work_uk: ''
+  notice_period: ''
+  require_sponsorship: ''

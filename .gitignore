@@ -26,5 +26,10 @@ venv/
 # Personal documents (CV contains personal info)
 profile/
 
+# User configuration files with personal data
+user_profile.yaml
+qa_databank.yaml
+job_search_config.yaml
+
 # Windows artifacts
 nul

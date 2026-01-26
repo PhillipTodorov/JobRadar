@@ -1,0 +1,53 @@
+# Your Professional Profile for Job Matching
+# Copy this file to user_profile.yaml and customize with your information
+
+profile:
+  name: "Your Name"
+
+  # Skills to match against job descriptions (case-insensitive)
+  skills:
+    # Required skills - jobs must have at least one of these
+    required:
+      - Python
+      - JavaScript
+      - communication
+
+    # Preferred skills - nice to have
+    preferred:
+      - React
+      - Node.js
+      - SQL
+      - Git
+      - Docker
+      - AWS
+
+  # Location preferences (20% of score)
+  locations:
+    preferred:
+      - London
+      - Remote
+      - Hybrid
+
+    acceptable:
+      - Manchester
+      - Birmingham
+
+  # Salary preferences (optional - many jobs don't list salary)
+  salary:
+    minimum: 25000
+    preferred: 35000
+
+  # Dealbreaker keywords - jobs containing these get score of 0
+  dealbreakers:
+    - "senior"
+    - "lead"
+    - "10+ years"
+    - "must have degree"
+
+# Scoring weights (must sum to 1.0)
+scoring:
+  weights:
+    required_skills: 0.40
+    preferred_skills: 0.25
+    location: 0.20
+    title_relevance: 0.15
