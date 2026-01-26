@@ -1,0 +1,30 @@
+# Environment and secrets
+.env
+
+# Google OAuth credentials
+credentials.json
+token.json
+
+# Temporary/intermediate files
+.tmp/*
+!.tmp/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code
+.claude/
+
+# Personal documents (CV contains personal info)
+profile/
+
+# Windows artifacts
+nul

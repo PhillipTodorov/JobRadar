@@ -1,0 +1,13 @@
+api:
+  max_results: 50
+  pages: 3
+search_params:
+  experience_level: ''
+  keywords: []
+  location: London, United Kingdom
+  posted_within_days: 30
+  remote: false
+  titles:
+  - Junior Software Engineer
+  - Junior Developer
+  - Graduate Developer

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Application Assistant</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Job Application Assistant</h1>
+      <p id="status" class="status">Ready</p>
+    </header>
+
+    <section class="actions">
+      <button id="copyPageBtn" class="btn btn-primary">
+        Copy Page Content
+      </button>
+      <button id="parseBtn" class="btn btn-secondary" disabled>
+        Parse Questions & Get Answers
+      </button>
+      <button id="debugBtn" class="btn btn-outline" disabled>
+        Debug: Preview Questions
+      </button>
+    </section>
+
+    <section id="debugResults" class="debug-results hidden">
+      <h3>Debug: Extracted Questions</h3>
+      <p class="debug-info">Page text: <span id="debugPageLength">0</span> chars</p>
+      <p class="debug-info">Method: <span id="debugMethod">-</span></p>
+      <div class="debug-section">
+        <h4>AI Extraction (<span id="debugAiCount">0</span>)</h4>
+        <ul id="debugAiQuestions"></ul>
+      </div>
+      <div class="debug-section">
+        <h4>Regex Extraction (<span id="debugRegexCount">0</span>)</h4>
+        <ul id="debugRegexQuestions"></ul>
+      </div>
+      <button id="closeDebugBtn" class="btn btn-small">Close Debug</button>
+    </section>
+
+    <section id="results" class="results hidden">
+      <h2>Questions Found: <span id="questionCount">0</span></h2>
+      <div id="answersContainer"></div>
+    </section>
+
+    <section id="error" class="error hidden">
+      <p id="errorMessage"></p>
+      <p class="hint">Make sure the backend is running:<br>
+        <code>python tools/answer_questions_api.py</code>
+      </p>
+    </section>
+
+    <footer>
+      <p>Backend: <span id="backendStatus">Not checked</span></p>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

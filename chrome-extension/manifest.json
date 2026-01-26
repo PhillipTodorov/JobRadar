@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Job Application Assistant",
+  "version": "1.0.0",
+  "description": "Extracts questions from job applications and provides AI-powered answers",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "clipboardRead",
+    "clipboardWrite",
+    "storage",
+    "sidePanel",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://localhost:5000/*",
+    "https://*/*",
+    "http://*/*"
+  ],
+  "action": {},
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "popup/popup.html"
+  }
+}
