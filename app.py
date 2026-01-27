@@ -561,9 +561,14 @@ elif page == "CV":
                 with open(cv_path, 'r', encoding='utf-8') as f:
                     cv_text = f.read()
             elif uploaded_file.name.endswith('.pdf'):
-                # PDF parsing would require pypdf or similar
-                st.warning("PDF support coming soon. Please use .docx or .txt format.")
+                from pypdf import PdfReader
+                reader = PdfReader(cv_path)
                 cv_text = ""
+                for page in reader.pages:
+                    text = page.extract_text()
+                    if text:
+                        cv_text += text + "\n"
+                cv_text = cv_text.strip()
             else:
                 cv_text = ""
 

@@ -8,6 +8,7 @@ requests
 streamlit
 pandas
 python-docx
+pypdf
 anthropic
 flask
 flask-cors
