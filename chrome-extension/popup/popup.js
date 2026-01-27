@@ -189,6 +189,7 @@ function displayAnswers(answers) {
 
     const isFromDatabank = item.source === 'databank';
     const textareaId = `answer-${index}`;
+    const originalAnswer = isFromDatabank ? item.answer : '';
 
     card.innerHTML = `
       <div class="question">
@@ -196,11 +197,11 @@ function displayAnswers(answers) {
         ${escapeHtml(item.question)}
       </div>
       <div class="answer">
-        <textarea id="${textareaId}" placeholder="Type your answer here...">${isFromDatabank ? escapeHtml(item.answer) : ''}</textarea>
+        <textarea id="${textareaId}" data-original="${escapeAttr(originalAnswer)}" placeholder="Type your answer here...">${isFromDatabank ? escapeHtml(item.answer) : ''}</textarea>
       </div>
       <div class="meta">
         <span class="source ${item.source}">${isFromDatabank ? 'From Databank' : 'Not in Databank'}</span>
-        <button class="btn btn-small copy-btn" data-textarea="${textareaId}">Copy</button>
+        <button class="btn btn-small copy-btn" data-textarea="${textareaId}" data-question="${escapeAttr(item.question)}" data-source="${item.source}">Copy</button>
       </div>
     `;
 
@@ -213,6 +214,9 @@ function displayAnswers(answers) {
       const textareaId = e.target.dataset.textarea;
       const textarea = document.getElementById(textareaId);
       const answer = textarea ? textarea.value : '';
+      const question = e.target.dataset.question;
+      const source = e.target.dataset.source;
+      const originalAnswer = textarea ? textarea.dataset.original : '';
 
       if (!answer.trim()) {
         e.target.textContent = 'Empty!';
@@ -223,11 +227,15 @@ function displayAnswers(answers) {
       }
 
       try {
+        // Copy to clipboard
         await navigator.clipboard.writeText(answer);
         e.target.textContent = 'Copied!';
         setTimeout(() => {
           e.target.textContent = 'Copy';
         }, 1500);
+
+        // Track answer usage
+        trackAnswerUsage(question, answer, source, originalAnswer !== answer);
       } catch (err) {
         console.error('Copy failed:', err);
       }
@@ -258,6 +266,49 @@ function escapeHtml(text) {
 
 function escapeAttr(text) {
   return text.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+async function trackAnswerUsage(question, answer, source, wasEdited) {
+  try {
+    // Get current tab info
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const jobUrl = tab ? tab.url : '';
+    const jobTitle = tab ? tab.title : '';
+
+    // Try to extract company name from title or URL
+    let company = '';
+    if (jobTitle) {
+      // Common patterns: "Job Title at Company Name" or "Job Title - Company Name"
+      const atMatch = jobTitle.match(/\sat\s+([^|\-]+)/i);
+      const dashMatch = jobTitle.match(/\s-\s+([^|\-]+)/i);
+      if (atMatch) {
+        company = atMatch[1].trim();
+      } else if (dashMatch) {
+        company = dashMatch[1].trim();
+      }
+    }
+
+    // Send tracking data to backend
+    await fetch(`${API_URL}/api/track-answer`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        question: question,
+        answer: answer,
+        source: source,
+        was_edited: wasEdited,
+        job_url: jobUrl,
+        job_title: jobTitle,
+        company: company
+      })
+    });
+
+    // Silently track - don't show errors to user
+  } catch (err) {
+    console.error('Failed to track answer:', err);
+  }
 }
 
 async function debugExtraction() {

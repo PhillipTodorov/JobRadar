@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+  <style>
+    .settings-container {
+      padding: 20px;
+    }
+
+    .setup-wizard {
+      max-width: 600px;
+    }
+
+    .wizard-step {
+      margin-bottom: 30px;
+      padding: 20px;
+      background: #f8fafc;
+      border-radius: 8px;
+      border-left: 4px solid #2563eb;
+    }
+
+    .wizard-step h3 {
+      margin-top: 0;
+      color: #1e40af;
+    }
+
+    .wizard-step code {
+      background: #e2e8f0;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+    }
+
+    .wizard-step pre {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 12px;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 12px;
+    }
+
+    .status-check {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      background: white;
+      border-radius: 6px;
+      margin: 10px 0;
+    }
+
+    .status-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .status-indicator.connected {
+      background: #10b981;
+    }
+
+    .status-indicator.disconnected {
+      background: #ef4444;
+    }
+
+    .status-indicator.checking {
+      background: #f59e0b;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .back-button {
+      margin-bottom: 20px;
+    }
+
+    .info-box {
+      background: #dbeafe;
+      border: 1px solid #3b82f6;
+      padding: 12px;
+      border-radius: 6px;
+      margin: 10px 0;
+      font-size: 13px;
+    }
+
+    .info-box strong {
+      color: #1e40af;
+    }
+  </style>
+</head>
+<body>
+  <div class="settings-container">
+    <button class="btn back-button" id="backBtn">← Back to Extension</button>
+
+    <h1>Setup Guide</h1>
+
+    <div class="status-check">
+      <div class="status-indicator checking" id="statusIndicator"></div>
+      <div>
+        <strong>Backend Status:</strong>
+        <span id="statusText">Checking...</span>
+      </div>
+      <button class="btn btn-small" id="refreshBtn" style="margin-left: auto;">Refresh</button>
+    </div>
+
+    <div class="info-box">
+      <strong>Quick Setup:</strong> The backend needs to be running for the extension to work.
+      If you haven't started it yet, follow the steps below.
+    </div>
+
+    <div class="setup-wizard">
+      <div class="wizard-step">
+        <h3>Step 1: Start the Backend</h3>
+        <p>Navigate to the JobRadar folder and double-click:</p>
+        <code>start_jobradar.bat</code>
+        <p style="margin-top: 10px;">This will start both the backend API (port 5000) and dashboard (port 8501).</p>
+        <p><strong>Keep this window open</strong> while using the extension.</p>
+      </div>
+
+      <div class="wizard-step">
+        <h3>Step 2: Configure Your Profile (Optional)</h3>
+        <p>For better results, configure your profile with standard answers:</p>
+        <ol style="margin-left: 20px;">
+          <li>Copy <code>qa_databank.yaml.template</code> → <code>qa_databank.yaml</code></li>
+          <li>Edit <code>qa_databank.yaml</code> with your answers to common questions</li>
+          <li>The extension will match questions and provide your pre-written answers</li>
+        </ol>
+      </div>
+
+      <div class="wizard-step">
+        <h3>Step 3: Add API Keys (Optional)</h3>
+        <p>For AI-powered question extraction (more accurate than regex):</p>
+        <ol style="margin-left: 20px;">
+          <li>Copy <code>.env.template</code> → <code>.env</code></li>
+          <li>Get a free API key from <a href="https://console.anthropic.com/" target="_blank">Anthropic Claude</a></li>
+          <li>Add it to <code>.env</code>:
+            <pre>ANTHROPIC_API_KEY=your-api-key-here</pre>
+          </li>
+          <li>Restart the backend (close and rerun <code>start_jobradar.bat</code>)</li>
+        </ol>
+        <div class="info-box">
+          <strong>Note:</strong> The extension works without API keys using regex fallback.
+          Add the key later if you want better question extraction.
+        </div>
+      </div>
+
+      <div class="wizard-step">
+        <h3>Step 4: Use the Extension</h3>
+        <ol style="margin-left: 20px;">
+          <li>Go to a job application page</li>
+          <li>Click the JobRadar icon in Chrome toolbar</li>
+          <li>Click "Copy Page Content"</li>
+          <li>Click "Parse Questions & Get Answers"</li>
+          <li>Review and copy answers into the application form</li>
+        </ol>
+      </div>
+    </div>
+
+    <div style="margin-top: 30px; text-align: center;">
+      <p style="color: #64748b; font-size: 13px;">
+        For detailed setup instructions, see <code>INSTALLATION_GUIDE.md</code> in the project folder.
+      </p>
+    </div>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>

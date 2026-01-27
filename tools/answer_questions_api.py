@@ -31,6 +31,7 @@ CORS(app)  # Allow requests from Chrome extension
 PROJECT_ROOT = Path(__file__).parent.parent
 QA_DATABANK_PATH = PROJECT_ROOT / "qa_databank.yaml"
 PROFILE_PATH = PROJECT_ROOT / "user_profile.yaml"
+ANSWER_HISTORY_PATH = PROJECT_ROOT / ".tmp" / "answer_usage_history.json"
 
 
 def load_yaml(path):
@@ -58,6 +59,31 @@ def load_cv_text():
     if cv_path:
         return parse_docx(cv_path)
     return ""
+
+
+def load_answer_history():
+    """Load answer usage history."""
+    if ANSWER_HISTORY_PATH.exists():
+        try:
+            with open(ANSWER_HISTORY_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading history: {e}")
+            return []
+    return []
+
+
+def save_answer_history(history):
+    """Save answer usage history."""
+    try:
+        # Ensure .tmp directory exists
+        ANSWER_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(ANSWER_HISTORY_PATH, "w", encoding="utf-8") as f:
+            json.dump(history, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"Error saving history: {e}")
+        return False
 
 
 def calculate_similarity(text1, text2):
@@ -168,19 +194,9 @@ def match_to_databank(question, databank):
     return best_match, best_score
 
 
-def extract_questions_with_ai(page_text):
-    """Use Claude to extract questions from raw page text."""
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-
-    if not api_key:
-        # Fallback: simple regex extraction
-        return extract_questions_regex(page_text)
-
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-
-        prompt = f"""Extract form field labels from this job application page.
+def _build_extraction_prompt(page_text):
+    """Build the Claude prompt for question extraction."""
+    return f"""Extract form field labels from this job application page.
 
 CRITICAL RULES:
 1. ONLY extract text that is EXPLICITLY WRITTEN in the page text below
@@ -206,6 +222,21 @@ Return ONLY a JSON array of the exact field labels found. No explanations.
 Page text:
 {page_text[:8000]}"""
 
+
+def extract_questions_with_ai(page_text):
+    """Use Claude to extract questions from raw page text."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+
+    if not api_key:
+        # Fallback: simple regex extraction
+        return extract_questions_regex(page_text)
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+
+        prompt = _build_extraction_prompt(page_text)
+
         message = client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=1000,
@@ -214,8 +245,7 @@ Page text:
 
         response_text = message.content[0].text.strip()
 
-        # Parse JSON response
-        # Handle potential markdown code blocks
+        # Parse JSON response - handle markdown code blocks
         if response_text.startswith("```"):
             response_text = re.sub(r'^```\w*\n?', '', response_text)
             response_text = re.sub(r'\n?```$', '', response_text)
@@ -297,55 +327,68 @@ def is_job_description(text):
     return any(phrase in text_lower for phrase in job_desc_phrases)
 
 
-def generate_answer_with_ai(question, context):
-    """Generate an answer using Claude API."""
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-
-    if not api_key:
-        return "[API key not configured - add ANTHROPIC_API_KEY to .env]"
-
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-
-        cv_text = context.get("cv_text", "")[:2000]  # Limit CV text
-        profile = context.get("profile", {})
-        user = profile.get("profile", {})
-        skills = user.get("skills", {})
-
-        prompt = f"""You are helping someone fill out a job application. Generate a professional, concise answer to this question.
-
-Question: {question}
-
-About the applicant:
-- Skills: {', '.join(skills.get('required', []) + skills.get('preferred', [])[:5])}
-- CV excerpt: {cv_text[:500]}
-
-Guidelines:
-- Be concise (1-3 sentences for short questions, 3-5 for longer ones)
-- Be professional and positive
-- Use first person ("I have...", "My experience...")
-- Don't make up specific facts not in the CV
-- For simple questions (name, email, etc.), just say "[Use your personal info]"
-
-Answer:"""
-
-        message = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=300,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        return message.content[0].text.strip()
-
-    except Exception as e:
-        return f"[Error generating answer: {str(e)}]"
-
-
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint."""
     return jsonify({"status": "ok", "message": "Backend is running"})
+
+
+@app.route('/api/track-answer', methods=['POST'])
+def track_answer():
+    """Save answer usage tracking data."""
+    data = request.json
+
+    # Required fields
+    required = ['question', 'answer', 'source']
+    if not all(k in data for k in required):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    # Load existing history
+    history = load_answer_history()
+
+    # Create tracking entry
+    from datetime import datetime
+    entry = {
+        "timestamp": datetime.now().isoformat(),
+        "question": data['question'],
+        "answer": data['answer'],
+        "source": data['source'],  # 'databank' or 'custom'
+        "was_edited": data.get('was_edited', False),
+        "job_url": data.get('job_url', ''),
+        "job_title": data.get('job_title', ''),
+        "company": data.get('company', ''),
+        "outcome": None  # Can be updated later
+    }
+
+    # Add to history
+    history.append(entry)
+
+    # Keep only last 1000 entries to prevent file bloat
+    if len(history) > 1000:
+        history = history[-1000:]
+
+    # Save
+    if save_answer_history(history):
+        return jsonify({"status": "success", "message": "Answer tracked"})
+    else:
+        return jsonify({"error": "Failed to save history"}), 500
+
+
+@app.route('/api/answer-history', methods=['GET'])
+def get_answer_history():
+    """Get answer usage history."""
+    history = load_answer_history()
+
+    # Return most recent first
+    history.reverse()
+
+    # Optional filtering by query params
+    limit = request.args.get('limit', type=int, default=100)
+
+    return jsonify({
+        "history": history[:limit],
+        "total": len(history)
+    })
 
 
 @app.route('/api/debug/extract-questions', methods=['POST'])
@@ -366,31 +409,7 @@ def debug_extract_questions():
             import anthropic
             client = anthropic.Anthropic(api_key=api_key)
 
-            prompt = f"""Extract form field labels from this job application page.
-
-CRITICAL RULES:
-1. ONLY extract text that is EXPLICITLY WRITTEN in the page text below
-2. DO NOT infer, guess, or add common fields that are not present
-3. If a field label is not literally in the text, DO NOT include it
-
-Look for form field labels like:
-- Input labels (e.g., "First Name", "Email", "Phone")
-- Questions asking the applicant for input (e.g., "Why are you interested?")
-- Required field indicators with labels
-
-DO NOT include:
-- Job requirements, qualifications, or skills
-- Job descriptions or responsibilities
-- Company information
-- Navigation or button text
-- Any text that describes the job rather than asks for applicant input
-
-If you only see 3-4 form fields in the text, return only those 3-4 fields. Do not pad the list with expected fields.
-
-Return ONLY a JSON array of the exact field labels found. No explanations.
-
-Page text:
-{page_text[:8000]}"""
+            prompt = _build_extraction_prompt(page_text)
 
             message = client.messages.create(
                 model="claude-3-haiku-20240307",
@@ -467,13 +486,15 @@ def parse_and_answer():
             "message": "No questions found on page"
         })
 
-    # Process each question - ONLY use databank answers (no AI generation)
+    # Process each question
+    # Strategy: ONLY match against databank (no AI generation for cost savings)
+    # User can edit answers in the extension before copying
     answers = []
     for question in questions:
-        # Try databank match
         match, score = match_to_databank(question, databank)
 
         if match and score > 0.3:
+            # Found a good match in databank
             answers.append({
                 "question": question,
                 "answer": match,
@@ -481,7 +502,7 @@ def parse_and_answer():
                 "confidence": score
             })
         else:
-            # No AI generation - prompt user to add to databank
+            # No match - user can type answer in extension
             answers.append({
                 "question": question,
                 "answer": "[No answer in databank - add this question to Q&A Databank]",

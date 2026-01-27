@@ -1,0 +1,25 @@
+Chrome Extension Icons Required
+================================
+
+The Chrome Web Store requires icon files in the following sizes:
+
+- icon16.png  (16x16 pixels)  - Favicon in the browser toolbar
+- icon32.png  (32x32 pixels)  - Windows and Linux taskbar
+- icon48.png  (48x48 pixels)  - Extension management page
+- icon128.png (128x128 pixels) - Chrome Web Store listing
+
+Recommended Design:
+- Simple, recognizable logo for JobRadar
+- Use a radar icon or job search theme
+- Ensure the icon is clear and readable at small sizes
+- Use transparent background (PNG format)
+- Keep colors professional (blues, greens, or brand colors)
+
+Tools for Creating Icons:
+- Canva (free, easy to use)
+- Figma (free, professional)
+- GIMP (free, open source)
+- Adobe Illustrator (paid)
+
+For now, you can test the extension without icons by loading it as an "unpacked extension" in Chrome.
+The icons are only required when publishing to the Chrome Web Store.

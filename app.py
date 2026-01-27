@@ -3,6 +3,7 @@
 Run with: streamlit run app.py
 """
 
+import datetime
 import json
 import os
 import subprocess
@@ -34,22 +35,22 @@ st.set_page_config(
     layout="wide",
 )
 
-# Minimal CSS
+# Minimal CSS for dark mode
 st.markdown("""
 <style>
 /* Compact metrics */
 [data-testid="stMetric"] {
-    background: #f8f9fa;
+    background: #1e293b;
     padding: 0.5rem 1rem;
     border-radius: 8px;
 }
 [data-testid="stMetricValue"] { font-size: 1.5rem; }
 [data-testid="stMetricLabel"] { font-size: 0.8rem; }
 
-/* Score colors */
-.score-high { color: #28a745; font-weight: 600; }
-.score-med { color: #ffc107; font-weight: 600; }
-.score-low { color: #6c757d; }
+/* Score colors for dark mode */
+.score-high { color: #10b981; font-weight: 600; }
+.score-med { color: #f59e0b; font-weight: 600; }
+.score-low { color: #94a3b8; }
 
 /* Compact expanders */
 .streamlit-expanderHeader { font-size: 0.9rem; }
@@ -191,8 +192,8 @@ def check_backend_status():
 
 # === Navigation ===
 
-st.sidebar.title("Job Scraper")
-page = st.sidebar.radio("Navigation", ["Jobs", "Settings", "Actions"], label_visibility="collapsed")
+st.sidebar.title("JobRadar")
+page = st.sidebar.radio("Navigation", ["Jobs", "Settings", "CV", "Projects", "Actions", "History"], label_visibility="collapsed")
 
 
 # ============================================================
@@ -525,7 +526,322 @@ elif page == "Settings":
 
 
 # ============================================================
-# PAGE 3: ACTIONS (Tools & Extension)
+# PAGE 3: CV (Upload & Parse Resume)
+# ============================================================
+
+elif page == "CV":
+    st.title("CV / Resume Parser")
+    st.caption("Upload your CV to automatically extract information")
+
+    # File uploader
+    uploaded_file = st.file_uploader(
+        "Upload your CV/Resume (.docx, .pdf, or .txt)",
+        type=["docx", "doc", "pdf", "txt"],
+        help="Upload your CV and we'll extract key information to populate your profile"
+    )
+
+    if uploaded_file:
+        # Save uploaded file
+        cv_dir = PROJECT_ROOT / "profile"
+        cv_dir.mkdir(exist_ok=True)
+        cv_path = cv_dir / uploaded_file.name
+
+        with open(cv_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+
+        st.success(f"Uploaded: {uploaded_file.name}")
+
+        # Extract text from CV
+        try:
+            if uploaded_file.name.endswith(('.docx', '.doc')):
+                from docx import Document
+                doc = Document(cv_path)
+                cv_text = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
+            elif uploaded_file.name.endswith('.txt'):
+                with open(cv_path, 'r', encoding='utf-8') as f:
+                    cv_text = f.read()
+            elif uploaded_file.name.endswith('.pdf'):
+                # PDF parsing would require pypdf or similar
+                st.warning("PDF support coming soon. Please use .docx or .txt format.")
+                cv_text = ""
+            else:
+                cv_text = ""
+
+            if cv_text:
+                # Show preview
+                with st.expander("CV Preview", expanded=False):
+                    st.text_area("", cv_text[:1000] + "..." if len(cv_text) > 1000 else cv_text, height=200, disabled=True)
+
+                st.divider()
+
+                # AI-powered extraction
+                api_key = os.getenv("ANTHROPIC_API_KEY")
+
+                if api_key:
+                    st.subheader("Extract Information")
+                    st.caption("Use Claude AI to automatically populate your profile from your CV")
+
+                    if st.button("Parse CV with AI", type="primary", use_container_width=True):
+                        with st.spinner("Analyzing CV..."):
+                            try:
+                                import anthropic
+                                client = anthropic.Anthropic(api_key=api_key)
+
+                                prompt = f"""Extract structured information from this CV/resume.
+
+CV Text:
+{cv_text[:4000]}
+
+Return a JSON object with these fields:
+{{
+    "name": "Full name",
+    "email": "email@example.com",
+    "phone": "+44 1234 567890",
+    "location": "City, Country",
+    "linkedin": "LinkedIn URL if present",
+    "github": "GitHub URL if present",
+    "skills": ["skill1", "skill2", "skill3", ...],
+    "years_experience": "X years",
+    "current_role": "Current or most recent job title",
+    "summary": "2-3 sentence professional summary"
+}}
+
+Only include fields that are present in the CV. Return valid JSON only."""
+
+                                message = client.messages.create(
+                                    model="claude-3-haiku-20240307",
+                                    max_tokens=1000,
+                                    messages=[{"role": "user", "content": prompt}]
+                                )
+
+                                response_text = message.content[0].text.strip()
+
+                                # Clean markdown code blocks if present
+                                if response_text.startswith("```"):
+                                    import re
+                                    response_text = re.sub(r'^```\w*\n?', '', response_text)
+                                    response_text = re.sub(r'\n?```$', '', response_text)
+
+                                extracted = json.loads(response_text)
+
+                                # Show extracted data
+                                st.success("CV parsed successfully!")
+                                st.json(extracted)
+
+                                st.divider()
+
+                                # Apply to profile
+                                if st.button("Apply to Profile", type="primary"):
+                                    # Update qa_databank with personal info
+                                    databank = load_qa_databank()
+                                    personal = databank.get("personal_info", {})
+
+                                    if extracted.get("name"):
+                                        personal["full_name"] = extracted["name"]
+                                    if extracted.get("email"):
+                                        personal["email"] = extracted["email"]
+                                    if extracted.get("phone"):
+                                        personal["phone"] = extracted["phone"]
+                                    if extracted.get("location"):
+                                        city_country = extracted["location"].split(",")
+                                        if len(city_country) >= 1:
+                                            personal["city"] = city_country[0].strip()
+                                        if len(city_country) >= 2:
+                                            personal["country"] = city_country[1].strip()
+                                    if extracted.get("linkedin"):
+                                        personal["linkedin"] = extracted["linkedin"]
+                                    if extracted.get("github"):
+                                        personal["github"] = extracted["github"]
+
+                                    databank["personal_info"] = personal
+                                    save_qa_databank(databank)
+
+                                    # Update profile with skills
+                                    profile = load_profile()
+                                    if extracted.get("skills"):
+                                        profile["profile"]["skills"]["required"] = extracted["skills"][:10]  # Top 10 skills
+                                    save_profile(profile)
+
+                                    st.success("Profile updated! Check the Settings page.")
+                                    st.balloons()
+
+                            except Exception as e:
+                                st.error(f"Failed to parse CV: {e}")
+                                st.info("You can manually update your profile in the Settings page.")
+
+                else:
+                    st.warning("AI parsing requires ANTHROPIC_API_KEY in .env file")
+                    st.info("You can still manually update your profile in the Settings page")
+
+        except Exception as e:
+            st.error(f"Failed to read CV: {e}")
+
+    else:
+        # No file uploaded - show instructions
+        st.info("Upload your CV to get started")
+
+        st.markdown("""
+### What gets extracted:
+- Personal information (name, email, phone, location)
+- Skills and technologies
+- Work experience summary
+- LinkedIn and GitHub profiles
+- Professional summary
+
+### How it works:
+1. Upload your CV (.docx or .txt format)
+2. Click "Parse CV with AI"
+3. Review extracted information
+4. Click "Apply to Profile" to update your settings
+
+**Note:** Requires ANTHROPIC_API_KEY in `.env` for AI parsing.
+        """)
+
+
+# ============================================================
+# PAGE 4: PROJECTS (GitHub Portfolio)
+# ============================================================
+
+elif page == "Projects":
+    st.title("GitHub Projects")
+    st.caption("Showcase your projects for job applications")
+
+    # Load or initialize projects
+    projects_path = PROJECT_ROOT / "github_projects.yaml"
+    if projects_path.exists():
+        with open(projects_path, "r", encoding="utf-8") as f:
+            projects_data = yaml.safe_load(f) or {"projects": []}
+    else:
+        projects_data = {"projects": []}
+
+    projects = projects_data.get("projects", [])
+
+    # Add new project
+    with st.expander("Add New Project", expanded=len(projects) == 0):
+        with st.form("add_project"):
+            c1, c2 = st.columns(2)
+
+            with c1:
+                proj_name = st.text_input("Project Name *", placeholder="My Awesome Project")
+                proj_url = st.text_input("GitHub URL *", placeholder="https://github.com/username/repo")
+                proj_demo = st.text_input("Live Demo URL", placeholder="https://myproject.com (optional)")
+
+            with c2:
+                proj_tech = st.text_input("Technologies Used *", placeholder="Python, Flask, React, PostgreSQL")
+                proj_role = st.text_input("Your Role", placeholder="Full-stack developer, Solo project, etc.")
+
+            proj_desc = st.text_area(
+                "Description *",
+                placeholder="Brief description of what the project does and your contributions...",
+                height=100
+            )
+
+            proj_highlights = st.text_area(
+                "Key Achievements",
+                placeholder="- Implemented real-time notifications\n- Reduced load time by 50%\n- Deployed to 1000+ users",
+                height=80
+            )
+
+            submitted = st.form_submit_button("Add Project", type="primary", use_container_width=True)
+
+            if submitted:
+                if proj_name and proj_url and proj_desc and proj_tech:
+                    new_project = {
+                        "name": proj_name,
+                        "url": proj_url,
+                        "demo_url": proj_demo,
+                        "technologies": proj_tech,
+                        "role": proj_role,
+                        "description": proj_desc,
+                        "highlights": proj_highlights,
+                        "added_date": datetime.datetime.now().isoformat()
+                    }
+
+                    projects.append(new_project)
+                    projects_data["projects"] = projects
+
+                    with open(projects_path, "w", encoding="utf-8") as f:
+                        yaml.dump(projects_data, f, default_flow_style=False, allow_unicode=True)
+
+                    st.success("Project added!")
+                    st.rerun()
+                else:
+                    st.error("Please fill in all required fields (marked with *)")
+
+    st.divider()
+
+    # Display projects
+    if not projects:
+        st.info("No projects added yet. Add your first project above!")
+    else:
+        st.subheader(f"Your Projects ({len(projects)})")
+
+        for idx, project in enumerate(projects):
+            with st.expander(f"**{project['name']}** · {project.get('technologies', 'N/A')}", expanded=False):
+                # Project header
+                c1, c2 = st.columns([3, 1])
+
+                with c1:
+                    st.markdown(f"**{project['name']}**")
+                    st.caption(f"Technologies: {project.get('technologies', 'N/A')}")
+                    if project.get('role'):
+                        st.caption(f"Role: {project['role']}")
+
+                with c2:
+                    # Links
+                    if project.get('url'):
+                        st.link_button("GitHub", project['url'], use_container_width=True)
+                    if project.get('demo_url'):
+                        st.link_button("Demo", project['demo_url'], use_container_width=True)
+
+                st.divider()
+
+                # Description
+                st.markdown("**Description:**")
+                st.write(project.get('description', 'No description'))
+
+                # Highlights
+                if project.get('highlights'):
+                    st.markdown("**Key Achievements:**")
+                    st.write(project.get('highlights'))
+
+                # Actions
+                col1, col2 = st.columns([1, 5])
+                with col1:
+                    if st.button("Delete", key=f"del_{idx}", type="secondary", use_container_width=True):
+                        projects.pop(idx)
+                        projects_data["projects"] = projects
+                        with open(projects_path, "w", encoding="utf-8") as f:
+                            yaml.dump(projects_data, f, default_flow_style=False, allow_unicode=True)
+                        st.rerun()
+
+                with col2:
+                    if st.button("Copy Project Description", key=f"copy_{idx}", use_container_width=True):
+                        # Generate a formatted description for job applications
+                        formatted = f"""**{project['name']}**
+Technologies: {project.get('technologies', 'N/A')}
+{project.get('description', '')}
+
+{project.get('highlights', '')}
+
+GitHub: {project.get('url', '')}"""
+                        st.code(formatted, language="text")
+                        st.success("Copy the text above to use in job applications!")
+
+        # Export all projects
+        st.divider()
+        if st.button("Export All Projects as JSON", use_container_width=True):
+            st.download_button(
+                "Download",
+                data=json.dumps(projects, indent=2),
+                file_name=f"github_projects_{datetime.datetime.now().strftime('%Y%m%d')}.json",
+                mime="application/json",
+                use_container_width=True
+            )
+
+
+# ============================================================
+# PAGE 5: ACTIONS (Tools & Extension)
 # ============================================================
 
 elif page == "Actions":
@@ -622,3 +938,99 @@ elif page == "Actions":
                                 st.markdown("---")
                     except Exception as e:
                         st.error(str(e))
+
+
+# ============================================================
+# PAGE 6: HISTORY (Answer Usage Tracking)
+# ============================================================
+
+elif page == "History":
+    st.title("Answer Usage History")
+    st.caption("Track which answers you used for each application")
+
+    # Load history
+    history_path = TMP_DIR / "answer_usage_history.json"
+    history = []
+    if history_path.exists():
+        try:
+            with open(history_path, "r", encoding="utf-8") as f:
+                history = json.load(f)
+                history.reverse()  # Most recent first
+        except Exception as e:
+            st.error(f"Failed to load history: {e}")
+
+    if not history:
+        st.info("No answer usage tracked yet. Use the Chrome extension to track answers.")
+        st.markdown("""
+**How tracking works:**
+1. Open the Chrome extension on a job application page
+2. Parse questions and get answers
+3. When you copy an answer, it's automatically tracked
+4. See patterns and improve your answers over time
+        """)
+    else:
+        # Stats
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Total Answers", len(history))
+        c2.metric("From Databank", len([h for h in history if h['source'] == 'databank']))
+        c3.metric("Custom", len([h for h in history if h['source'] != 'databank']))
+        c4.metric("Edited", len([h for h in history if h.get('was_edited', False)]))
+
+        st.divider()
+
+        # Filters
+        with st.expander("Filters", expanded=False):
+            filter_source = st.selectbox("Source", ["All", "Databank", "Custom"], index=0)
+            filter_company = st.text_input("Company contains", "")
+            limit = st.slider("Show last N entries", 10, 100, 50)
+
+        # Apply filters
+        filtered = history
+        if filter_source != "All":
+            filtered = [h for h in filtered if h['source'].lower() == filter_source.lower()]
+        if filter_company:
+            filtered = [h for h in filtered if filter_company.lower() in h.get('company', '').lower()]
+
+        filtered = filtered[:limit]
+
+        # Show history
+        st.subheader(f"Recent Activity ({len(filtered)} entries)")
+
+        for entry in filtered:
+            with st.expander(f"{entry['timestamp'][:10]} • {entry.get('company', 'Unknown')} • {entry['question'][:60]}..."):
+                # Meta info
+                col1, col2, col3 = st.columns(3)
+                col1.caption(f"**Date:** {entry['timestamp'][:19]}")
+                col2.caption(f"**Source:** {entry['source']}")
+                if entry.get('was_edited'):
+                    col3.caption("✏️ **Edited**")
+
+                # Job info
+                if entry.get('company'):
+                    st.markdown(f"**Company:** {entry['company']}")
+                if entry.get('job_title'):
+                    st.caption(f"Job: {entry['job_title']}")
+                if entry.get('job_url'):
+                    st.markdown(f"[View Job]({entry['job_url']})")
+
+                st.divider()
+
+                # Question & Answer
+                st.markdown(f"**Question:**")
+                st.markdown(f"> {entry['question']}")
+
+                st.markdown(f"**Answer:**")
+                st.text_area("", entry['answer'], height=100, disabled=True, label_visibility="collapsed", key=f"ans_{entry['timestamp']}")
+
+                # Outcome (optional - for future use)
+                if entry.get('outcome'):
+                    st.info(f"Outcome: {entry['outcome']}")
+
+        # Export
+        if st.button("Export History as JSON", use_container_width=True):
+            st.download_button(
+                "Download",
+                data=json.dumps(history, indent=2),
+                file_name=f"answer_history_{datetime.datetime.now().strftime('%Y%m%d')}.json",
+                mime="application/json"
+            )

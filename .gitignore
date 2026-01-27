@@ -30,6 +30,15 @@ profile/
 user_profile.yaml
 qa_databank.yaml
 job_search_config.yaml
+github_projects.yaml
 
 # Windows artifacts
 nul
+
+# Runtime logs
+*.log
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
