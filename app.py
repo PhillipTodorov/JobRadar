@@ -1427,11 +1427,13 @@ elif page == "CV":
             else:
                 cv_text = ""
 
-            # Minimal cleanup - just remove excessive blank lines
+            # Clean up formatting while preserving structure
             if cv_text:
                 import re
-                # Only remove 4+ consecutive newlines, keep normal spacing
-                cv_text = re.sub(r'\n{4,}', '\n\n\n', cv_text)
+                # Fix spacing: replace 2+ spaces with single space (but keep newlines)
+                cv_text = re.sub(r'(?<!\n) {2,}(?!\n)', ' ', cv_text)
+                # Remove excessive blank lines (4+ newlines → 2)
+                cv_text = re.sub(r'\n{4,}', '\n\n', cv_text)
                 cv_text = cv_text.strip()
 
             if cv_text:
