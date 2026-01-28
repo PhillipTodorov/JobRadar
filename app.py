@@ -1413,7 +1413,7 @@ elif page == "CV":
                                 prompt = f"""Extract structured information from this CV/resume.
 
 CV Text:
-{cv_text[:4000]}
+{cv_text}
 
 Return a JSON object with these fields:
 {{
@@ -1432,8 +1432,8 @@ Return a JSON object with these fields:
 Only include fields that are present in the CV. Return valid JSON only."""
 
                                 message = client.messages.create(
-                                    model="claude-3-haiku-20240307",
-                                    max_tokens=1000,
+                                    model="claude-3-5-haiku-20241022",
+                                    max_tokens=1500,
                                     messages=[{"role": "user", "content": prompt}]
                                 )
 
