@@ -1416,6 +1416,16 @@ elif page == "CV":
             else:
                 cv_text = ""
 
+            # Clean up formatting (normalize whitespace)
+            if cv_text:
+                import re
+                # Replace multiple spaces with single space
+                cv_text = re.sub(r' {2,}', ' ', cv_text)
+                # Replace multiple newlines with double newline
+                cv_text = re.sub(r'\n{3,}', '\n\n', cv_text)
+                # Strip leading/trailing whitespace from each line
+                cv_text = '\n'.join(line.strip() for line in cv_text.split('\n'))
+
             if cv_text:
                 # Show preview inline
                 st.markdown("**CV Preview**")
@@ -1430,8 +1440,8 @@ elif page == "CV":
                         mime="text/plain",
                         use_container_width=True
                     )
-                with st.container(height=200):
-                    st.text(cv_text[:1500] + "..." if len(cv_text) > 1500 else cv_text)
+                with st.container(height=400):
+                    st.text(cv_text)
 
                 st.divider()
 
