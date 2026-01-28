@@ -9,6 +9,7 @@ streamlit
 pandas
 python-docx
 pdfplumber
+pypdf
 anthropic
 flask
 flask-cors
