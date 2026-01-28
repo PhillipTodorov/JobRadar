@@ -1,17 +1,16 @@
 # JobRadar Installation Guide
 
-**Get started in 3 steps** - no configuration needed!
+**Get started in 2 minutes** - no backend or API keys needed!
 
 ## What You Need
 
-- **Python 3.8+** ([Download here](https://www.python.org/downloads/) if needed)
 - **Google Chrome** browser
 
-That's all! Everything else is optional.
+That's it! Python backend is completely optional.
 
 ---
 
-## 3-Step Quick Start
+## 2-Step Quick Start
 
 ### Step 1: Load the Chrome Extension
 
@@ -24,78 +23,87 @@ That's all! Everything else is optional.
    ```
 5. Pin the extension (click puzzle icon → pin "JobRadar")
 
-**Note:** The extension loads instantly now - placeholder icons are included.
+**Note:** The extension loads instantly - placeholder icons are included.
 
 ---
 
-### Step 2: Start the Backend
+### Step 2: Add Your Answers
 
-**Double-click:** `start_jobradar.bat`
+1. Click the JobRadar extension icon
+2. Click **"Settings"** in the extension
+3. Go to the **"Personal Info"** tab:
+   - Add your name, email, phone, location, LinkedIn
+4. Go to the **"Q&A Bank"** tab:
+   - Click **"+ Add Question"**
+   - Add common questions and your pre-written answers
+   - Examples:
+     - "Why are you interested in this role?" → Your standard answer
+     - "What are your salary expectations?" → "£50,000 - £60,000"
+     - "When can you start?" → "2 weeks notice"
 
-This starts:
-- Flask API (port 5000) - needed by extension
-- Streamlit dashboard (port 8501) - optional, for job browsing
-
-**Keep this window open** while using the extension.
-
-**First time?** The script automatically installs dependencies.
+**That's it!** Your answers are saved in Chrome storage and ready to use.
 
 ---
 
-### Step 3: Use It!
+### Using the Extension
 
 1. Go to a job application page (LinkedIn, Indeed, company websites, etc.)
 2. Click the JobRadar icon in Chrome
-3. In the side panel, click "Copy Page Content"
-4. Click "Parse Questions & Get Answers"
-5. Copy answers into the application form
+3. In the side panel, click **"Copy Page Content"**
+4. Click **"Parse Questions & Get Answers"**
+5. Review the matched answers and copy them into the application form
 
-**That's it!** The extension works immediately using smart regex extraction.
+**The extension works completely offline** using local regex extraction and Chrome storage.
 
 ---
 
 ## Optional Enhancements
 
-Want better results? Add these features later:
+The extension works great standalone! Add these features if you want advanced capabilities:
 
-### A) Add Your Standard Answers (Highly Recommended)
+### A) Enable Python Backend (Optional)
 
-This is where JobRadar becomes powerful - save your answers once, reuse everywhere:
+The backend adds:
+- AI-powered question extraction (~5% more accurate than regex)
+- Answer usage tracking and analytics
+- Cross-device sync (if you use multiple computers)
+- Job scraping and scoring dashboard
 
-1. Copy the template:
-   ```
-   copy qa_databank.yaml.template qa_databank.yaml
-   ```
+**Requirements:**
+- Python 3.8+ ([Download here](https://www.python.org/downloads/))
 
-2. Edit `qa_databank.yaml` with YOUR answers to common questions:
-   ```yaml
-   personal_info:
-     full_name: "Your Name"
-     email: "your.email@example.com"
-     phone: "+44 1234 567890"
-     location: "London, UK"
+**Setup:**
 
-   questions:
-     "Why are you interested in this role?": "Your pre-written answer here"
-     "What are your salary expectations?": "£50,000 - £60,000"
-     "When can you start?": "2 weeks notice"
-   ```
+1. **Double-click:** `start_jobradar.bat`
 
-3. Restart the backend
+   This starts:
+   - Flask API (port 5000) - for extension features
+   - Streamlit dashboard (port 8501) - for job browsing
 
-Now the extension will auto-fill your saved answers!
+   **First time?** The script automatically installs dependencies.
+
+2. **Keep the window open** while using advanced features
+
+3. In the extension:
+   - Go to **Settings → Backend (Optional)** tab
+   - Verify status shows **"Connected ✓"**
+   - Enable **"Auto-sync Q&A data"** if desired
+
+**With backend enabled:**
+- Extension tries backend first, falls back to local if unavailable
+- Your Chrome storage Q&A syncs with backend (bidirectional)
+- Usage history is tracked in the dashboard
 
 ---
 
-### B) Enable AI Question Extraction (Optional)
+### B) Enable AI Question Extraction (Requires Backend)
 
-By default, JobRadar uses **regex extraction** (free, fast, works offline).
-For slightly better accuracy, add an AI key:
+By default, the extension uses **regex extraction** (free, fast, works offline).
+For slightly better accuracy (~5%), enable AI:
 
-**Do you need this?** Probably not! Regex works well for most applications.
-Our tests show it catches 90%+ of form fields accurately.
+**Do you need this?** Probably not! Regex works well for 90%+ of applications.
 
-**If you want it anyway:**
+**If you want it:**
 
 1. Copy the template:
    ```
@@ -115,9 +123,9 @@ Our tests show it catches 90%+ of form fields accurately.
 
 ---
 
-### C) Enable Job Search (Optional)
+### C) Enable Job Search (Requires Backend)
 
-Want JobRadar to scrape jobs for you?
+Want JobRadar to scrape and score jobs for you?
 
 1. Get a free SerpAPI key: https://serpapi.com/ (100 searches/month free)
 
@@ -129,11 +137,12 @@ Want JobRadar to scrape jobs for you?
 3. Configure your search:
    ```
    copy job_search_config.yaml.template job_search_config.yaml
+   copy user_profile.yaml.template user_profile.yaml
    ```
 
-4. Edit `job_search_config.yaml` with your criteria
+4. Edit both YAML files with your criteria and skills
 
-5. Use the dashboard (port 8501) to run searches
+5. Use the dashboard (port 8501) to run searches and view scored jobs
 
 ---
 
@@ -144,25 +153,26 @@ Want JobRadar to scrape jobs for you?
 - Check that Developer mode is enabled
 - Icons are included now, so it should just work
 
-### "Backend not running" in extension
-- Make sure `start_jobradar.bat` is running
-- Check that you see "Running on http://127.0.0.1:5000" in the terminal
-- Try clicking the "Setup Guide" link in the extension for live status
-
 ### "No questions found"
-- Make sure you clicked "Copy Page Content" first
+- Make sure you clicked **"Copy Page Content"** first
 - Some pages don't have standard forms (try a different job site)
-- Click "Debug: Preview Questions" to see what was extracted
+- Check that the page actually contains a job application form
 
-### "Python not found"
+### "Questions extracted but no answers"
+- This is normal if you haven't added Q&A entries yet
+- Go to **Settings → Q&A Bank** and add your standard answers
+- You can also type answers directly in the extension before copying
+
+### "Backend not running" message (Optional)
+- **This is fine!** The extension works standalone without the backend
+- Status shows "(Local mode)" - this means it's working locally
+- If you want backend features, start `start_jobradar.bat`
+- Check **Settings → Backend (Optional)** tab for connection status
+
+### "Python not found" (Only if using backend)
 - Install Python: https://www.python.org/downloads/
 - **Important:** Check "Add Python to PATH" during installation
 - Restart your terminal
-
-### "Questions extracted but no answers"
-- This is normal if you haven't set up `qa_databank.yaml` yet
-- Add your standard answers (see Optional Enhancement A above)
-- You can type answers directly in the extension before copying
 
 ---
 
@@ -170,53 +180,80 @@ Want JobRadar to scrape jobs for you?
 
 ### Question Extraction
 
-**Default (Free):** Regex pattern matching
+**Standalone Mode (Default):** Local regex extraction
+- Runs completely in your browser (JavaScript)
 - Looks for common field labels (First Name, Email, etc.)
 - Finds questions with patterns like "Why...", "What...", "Do you..."
-- Fast, offline, no API costs
-- Works for 90%+ of standard application forms
+- Fast, offline, no API costs, no backend needed
+- Works for 90%+ of standard application forms (Workday, Greenhouse, Lever)
 
-**Optional (Better):** AI extraction with Claude
+**Backend Mode (Optional):** AI extraction with Claude
+- Requires Python backend and ANTHROPIC_API_KEY
 - Understands context and unconventional labels
-- Slightly more accurate (maybe 5-10% improvement)
+- Slightly more accurate (maybe 5% improvement)
 - Costs ~$0.001 per application
-- Add ANTHROPIC_API_KEY to enable
+- Extension automatically tries backend first, falls back to local
 
 ### Answer Matching
 
-The extension matches extracted questions against your `qa_databank.yaml`:
-- Exact matches: Returns your saved answer
-- Similar questions: Uses word overlap similarity
-- No match: Shows "[No answer in databank]" - you type it manually
+**Standalone Mode:**
+- Matches extracted questions against your Chrome storage Q&A databank
+- Exact matches: Personal info fields (name, email, phone)
+- Fuzzy matches: Uses word overlap similarity for stored questions
+- No match: Shows "[No answer in databank - add in Settings]"
+- All processing happens locally in your browser
 
-### Tracking
+**Backend Mode (Optional):**
+- Can sync Q&A data between Chrome storage and backend YAML file
+- Enables cross-device sync if you use multiple computers
+- Bidirectional: Changes in extension sync to backend and vice versa
 
-Every copied answer is tracked:
+### Tracking (Backend Only)
+
+If backend is enabled, every copied answer is tracked:
 - Which questions you answered
 - Whether you edited the answer
 - Job URL and company name
 - View history in the dashboard (port 8501 → History tab)
 
+**Standalone mode:** No tracking - your data stays private in Chrome storage
+
 ---
 
 ## Privacy & Security
 
-- **All data stays local** - nothing is sent to external servers except:
-  - SerpAPI calls (if you use job search)
-  - Anthropic API calls (if you enable AI extraction)
+**Standalone Mode (Default):**
+- **100% private** - all data stored in Chrome's local storage
+- **No network calls** - everything runs in your browser
+- **No external servers** - no cloud services, no backend required
+- **No tracking** - your data never leaves your machine
+
+**Backend Mode (Optional):**
+- **Local backend only** - runs on your computer (localhost)
+- **No cloud services** - data never sent to external servers except:
+  - SerpAPI calls (only if you enable job search)
+  - Anthropic API calls (only if you enable AI extraction)
+- **You control everything** - backend is optional and runs locally
+
+**Both Modes:**
 - **No auto-fill** - you review and copy answers manually (TOS-safe)
-- **No website modification** - extension just reads page text
-- **No data collection** - tracking is local only
+- **No website modification** - extension only reads page text when you click
+- **No data collection** - no analytics, no telemetry
+- **Open source** - inspect the code yourself
 
 ---
 
 ## Next Steps
 
 1. **Start using it** - apply to jobs with the extension
-2. **Build your databank** - add more Q&A as you encounter new questions
-3. **Review the History tab** - see which answers work best
-4. **Customize as needed** - add API keys if you want enhanced features
+2. **Build your Q&A bank** - add more answers in Settings as you encounter new questions
+3. **Export your data** - use Settings → Import/Export to backup your Q&A databank
+4. **(Optional) Add backend** - if you want AI extraction, tracking, or job scraping
 
 For daily workflow tips, see [QUICK_START.md](QUICK_START.md)
 
 For technical details, see [README.md](README.md)
+
+---
+
+**Ready for Chrome Web Store!** The extension now works with zero setup - just install and start applying.
