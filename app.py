@@ -1378,42 +1378,58 @@ elif page == "CV":
                 with open(cv_path, 'r', encoding='utf-8') as f:
                     cv_text = f.read()
             elif uploaded_file.name.endswith('.pdf'):
-                # Try pdfplumber first (better for most PDFs)
-                import pdfplumber
+                # Try multiple extraction methods and use the best one
                 cv_text = ""
-                with pdfplumber.open(cv_path) as pdf:
-                    for page in pdf.pages:
-                        # Try extracting with layout preservation
-                        text = page.extract_text(layout=True)
-                        if not text:  # Fallback to default extraction
+                extraction_methods = []
+
+                # Method 1: pdfplumber (default)
+                try:
+                    import pdfplumber
+                    pdfplumber_text = ""
+                    with pdfplumber.open(cv_path) as pdf:
+                        for page in pdf.pages:
                             text = page.extract_text()
-                        if text:
-                            cv_text += text + "\n\n"  # Double newline between pages
-                cv_text = cv_text.strip()
+                            if text:
+                                pdfplumber_text += text + "\n\n"
+                    pdfplumber_text = pdfplumber_text.strip()
+                    extraction_methods.append(("pdfplumber", pdfplumber_text))
+                except Exception as e:
+                    st.warning(f"pdfplumber extraction failed: {e}")
 
-                # Fallback to pypdf if pdfplumber extracted very little text
-                if len(cv_text) < 500:  # Suspiciously short - try alternate extraction
-                    try:
-                        from pypdf import PdfReader
-                        reader = PdfReader(cv_path)
-                        pypdf_text = ""
-                        for page in reader.pages:
-                            pypdf_text += page.extract_text() + "\n\n"
-                        pypdf_text = pypdf_text.strip()
+                # Method 2: pypdf (fallback)
+                try:
+                    from pypdf import PdfReader
+                    reader = PdfReader(cv_path)
+                    pypdf_text = ""
+                    for page in reader.pages:
+                        pypdf_text += page.extract_text() + "\n\n"
+                    pypdf_text = pypdf_text.strip()
+                    extraction_methods.append(("pypdf", pypdf_text))
+                except Exception as e:
+                    st.warning(f"pypdf extraction failed: {e}")
 
-                        # Use pypdf result if it's significantly longer
-                        if len(pypdf_text) > len(cv_text):
-                            cv_text = pypdf_text
-                            st.info(f"Used fallback PDF extractor (extracted {len(cv_text)} chars)")
-                    except Exception as e:
-                        pass  # Keep pdfplumber result
+                # Use whichever method extracted the most text
+                if extraction_methods:
+                    method_name, cv_text = max(extraction_methods, key=lambda x: len(x[1]))
+                    if len(extraction_methods) > 1:
+                        st.info(f"Using {method_name} extraction ({len(cv_text)} chars)")
             else:
                 cv_text = ""
 
             if cv_text:
                 # Show preview inline
                 st.markdown("**CV Preview**")
-                st.caption(f"Extracted {len(cv_text)} characters from CV")
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.caption(f"Extracted {len(cv_text)} characters from CV")
+                with col2:
+                    st.download_button(
+                        label="Download Full Text",
+                        data=cv_text,
+                        file_name="cv_extracted.txt",
+                        mime="text/plain",
+                        use_container_width=True
+                    )
                 with st.container(height=200):
                     st.text(cv_text[:1500] + "..." if len(cv_text) > 1500 else cv_text)
 
