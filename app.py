@@ -1378,7 +1378,7 @@ elif page == "CV":
                 with open(cv_path, 'r', encoding='utf-8') as f:
                     cv_text = f.read()
             elif uploaded_file.name.endswith('.pdf'):
-                # Try multiple extraction methods and use the best one
+                # Try multiple extraction methods and compare results
                 cv_text = ""
                 extraction_methods = []
 
@@ -1387,10 +1387,13 @@ elif page == "CV":
                     import pdfplumber
                     pdfplumber_text = ""
                     with pdfplumber.open(cv_path) as pdf:
-                        for page in pdf.pages:
+                        num_pages = len(pdf.pages)
+                        st.info(f"📄 PDF has {num_pages} page(s)")
+                        for i, page in enumerate(pdf.pages, 1):
                             text = page.extract_text()
                             if text:
                                 pdfplumber_text += text + "\n\n"
+                                st.caption(f"pdfplumber page {i}: {len(text)} chars")
                     pdfplumber_text = pdfplumber_text.strip()
                     extraction_methods.append(("pdfplumber", pdfplumber_text))
                 except Exception as e:
@@ -1401,30 +1404,35 @@ elif page == "CV":
                     from pypdf import PdfReader
                     reader = PdfReader(cv_path)
                     pypdf_text = ""
-                    for page in reader.pages:
-                        pypdf_text += page.extract_text() + "\n\n"
+                    num_pages = len(reader.pages)
+                    for i, page in enumerate(reader.pages, 1):
+                        text = page.extract_text()
+                        pypdf_text += text + "\n\n"
+                        st.caption(f"pypdf page {i}: {len(text)} chars")
                     pypdf_text = pypdf_text.strip()
                     extraction_methods.append(("pypdf", pypdf_text))
                 except Exception as e:
                     st.warning(f"pypdf extraction failed: {e}")
 
-                # Use whichever method extracted the most text
+                # Compare and show results
                 if extraction_methods:
-                    method_name, cv_text = max(extraction_methods, key=lambda x: len(x[1]))
                     if len(extraction_methods) > 1:
-                        st.info(f"Using {method_name} extraction ({len(cv_text)} chars)")
+                        st.markdown("**Extraction Comparison:**")
+                        for method_name, text in extraction_methods:
+                            st.write(f"- {method_name}: {len(text)} chars")
+
+                    # Use whichever method extracted the most text
+                    method_name, cv_text = max(extraction_methods, key=lambda x: len(x[1]))
+                    st.success(f"✅ Using {method_name} (extracted {len(cv_text)} chars)")
             else:
                 cv_text = ""
 
-            # Clean up formatting (normalize whitespace)
+            # Minimal cleanup - just remove excessive blank lines
             if cv_text:
                 import re
-                # Replace multiple spaces with single space
-                cv_text = re.sub(r' {2,}', ' ', cv_text)
-                # Replace multiple newlines with double newline
-                cv_text = re.sub(r'\n{3,}', '\n\n', cv_text)
-                # Strip leading/trailing whitespace from each line
-                cv_text = '\n'.join(line.strip() for line in cv_text.split('\n'))
+                # Only remove 4+ consecutive newlines, keep normal spacing
+                cv_text = re.sub(r'\n{4,}', '\n\n\n', cv_text)
+                cv_text = cv_text.strip()
 
             if cv_text:
                 # Show preview inline
