@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "JobRadar - Application Assistant",
-  "version": "1.0.0",
-  "description": "Automatically extracts questions from job applications and provides answers from your personal Q&A databank. No auto-fill - you review and copy answers manually.",
+  "version": "2.0.0",
+  "description": "Automatically extracts questions from job applications and provides answers. Works standalone, no setup required! You review and copy answers manually.",
   "author": "JobRadar",
   "permissions": [
     "activeTab",
@@ -13,8 +13,10 @@
     "sidePanel",
     "tabs"
   ],
+  "optional_host_permissions": [
+    "http://localhost:5000/*"
+  ],
   "host_permissions": [
-    "http://localhost:5000/*",
     "https://*/*",
     "http://*/*"
   ],

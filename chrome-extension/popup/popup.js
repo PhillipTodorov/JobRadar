@@ -4,6 +4,41 @@ const API_URL = 'http://localhost:5000';
 let pageContent = '';
 let sourceTabId = null;
 
+// === Q&A Databank Storage Management ===
+
+/**
+ * Load Q&A databank from Chrome storage.
+ * @returns {Promise<Object>} - Q&A databank structure
+ */
+async function loadQADatabank() {
+  const storage = await chrome.storage.local.get(['qa_databank']);
+  return storage.qa_databank || createEmptyDatabank();
+}
+
+/**
+ * Save Q&A databank to Chrome storage.
+ * @param {Object} databank - Q&A databank to save
+ */
+async function saveQADatabank(databank) {
+  databank.last_updated = new Date().toISOString();
+  await chrome.storage.local.set({ qa_databank: databank });
+}
+
+/**
+ * Create empty databank structure.
+ * @returns {Object} - Empty Q&A databank
+ */
+function createEmptyDatabank() {
+  return {
+    version: '1.0',
+    last_updated: new Date().toISOString(),
+    personal_info: {},
+    questions: {},
+    salary: {},
+    work_authorization: {}
+  };
+}
+
 // DOM Elements
 const copyPageBtn = document.getElementById('copyPageBtn');
 const parseBtn = document.getElementById('parseBtn');
@@ -43,7 +78,13 @@ async function initialize() {
   await updateSourceTab();
 
   // Load saved data from storage
-  const saved = await chrome.storage.local.get(['pageContent', 'answers']);
+  const saved = await chrome.storage.local.get(['pageContent', 'answers', 'first_launch']);
+
+  // First launch detection - show welcome message
+  if (!saved.first_launch) {
+    showWelcomeMessage();
+    await chrome.storage.local.set({ first_launch: true });
+  }
 
   // Restore page content and answers
   if (saved.pageContent) {
@@ -56,6 +97,26 @@ async function initialize() {
       displayAnswers(saved.answers);
     }
   }
+}
+
+function showWelcomeMessage() {
+  const welcomeEl = document.createElement('div');
+  welcomeEl.className = 'welcome-banner';
+  welcomeEl.style.cssText = 'background: #e3f2fd; border: 1px solid #2196f3; border-radius: 8px; padding: 16px; margin-bottom: 16px;';
+  welcomeEl.innerHTML = `
+    <h3 style="margin: 0 0 8px 0; color: #1976d2; font-size: 16px;">Welcome to JobRadar!</h3>
+    <p style="margin: 0 0 12px 0; font-size: 14px;">Get started by adding your answers to common questions in <a href="settings.html" style="color: #1976d2;">Settings</a>.</p>
+    <p style="margin: 0 0 12px 0; font-size: 14px;">Then use "Copy Page Content" on any job application to auto-fill answers.</p>
+    <button id="closeWelcome" class="btn btn-small">Got it!</button>
+  `;
+
+  const container = document.querySelector('.container');
+  const actions = document.querySelector('.actions');
+  container.insertBefore(welcomeEl, actions);
+
+  document.getElementById('closeWelcome').addEventListener('click', () => {
+    welcomeEl.remove();
+  });
 }
 
 // Get the current active tab
@@ -140,35 +201,80 @@ async function parseAndAnswer() {
   parseBtn.disabled = true;
   hideError();
 
+  let answers = [];
+  let usedBackend = false;
+
   try {
+    // Try backend first with 3s timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
     const response = await fetch(`${API_URL}/api/parse-and-answer`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        pageText: pageContent,
-        context: {}
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pageText: pageContent, context: {} }),
+      signal: controller.signal
     });
 
-    if (!response.ok) {
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const data = await response.json();
+      answers = data.answers || [];
+      usedBackend = true;
+      setStatus(`Done! Found ${answers.length} questions (Backend)`);
+    } else {
       throw new Error(`Server error: ${response.status}`);
     }
-
-    const data = await response.json();
-    displayAnswers(data.answers);
-    setStatus('Done!');
-
-    // Save answers to storage
-    await chrome.storage.local.set({ answers: data.answers });
-
   } catch (e) {
-    console.error('Parse error:', e);
-    setStatus('Error');
-    showError(`Failed to connect to backend: ${e.message}`);
+    // Backend unavailable - use local processing
+    console.log('Backend unavailable, using local extraction:', e.message);
+    setStatus('Parsing locally...');
+
+    try {
+      // Import local modules
+      const { extractQuestionsRegex } = await import('./lib/extraction.js');
+      const { matchToDatabank } = await import('./lib/matching.js');
+
+      // Load Q&A databank from storage
+      const databank = await loadQADatabank();
+
+      // Extract questions locally
+      const questions = extractQuestionsRegex(pageContent);
+
+      // Match against databank
+      answers = questions.map(question => {
+        const { answer, score, source } = matchToDatabank(question, databank);
+
+        if (answer && score > 0.3) {
+          return {
+            question,
+            answer,
+            source,
+            confidence: score
+          };
+        } else {
+          return {
+            question,
+            answer: '[No answer in databank - add in Settings]',
+            source: 'not_found',
+            confidence: 0
+          };
+        }
+      });
+
+      setStatus(`Done! Found ${answers.length} questions (Local mode)`);
+    } catch (localError) {
+      console.error('Local extraction error:', localError);
+      setStatus('Error');
+      showError(`Failed to extract questions: ${localError.message}`);
+      parseBtn.disabled = false;
+      return;
+    }
   }
 
+  displayAnswers(answers);
+  await chrome.storage.local.set({ answers });
   parseBtn.disabled = false;
 }
 

@@ -1,55 +1,203 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JobRadar Settings</title>
   <link rel="stylesheet" href="popup.css">
   <style>
+    /* Settings container */
     .settings-container {
       padding: 20px;
+      max-width: 900px;
+      margin: 0 auto;
     }
 
-    .setup-wizard {
-      max-width: 600px;
+    .back-button {
+      margin-bottom: 20px;
     }
 
-    .wizard-step {
-      margin-bottom: 30px;
-      padding: 20px;
-      background: #f8fafc;
-      border-radius: 8px;
-      border-left: 4px solid #2563eb;
+    /* Tab styles */
+    .tabs {
+      display: flex;
+      gap: 8px;
+      border-bottom: 2px solid #ddd;
+      margin-bottom: 20px;
     }
 
-    .wizard-step h3 {
-      margin-top: 0;
-      color: #1e40af;
+    .tab-btn {
+      background: transparent;
+      border: none;
+      border-bottom: 3px solid transparent;
+      padding: 12px 20px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      color: #666;
+      transition: all 0.2s;
     }
 
-    .wizard-step code {
-      background: #e2e8f0;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-family: 'Courier New', monospace;
-      font-size: 13px;
+    .tab-btn:hover {
+      color: #333;
+      background: #f5f5f5;
     }
 
-    .wizard-step pre {
-      background: #1e293b;
-      color: #e2e8f0;
-      padding: 12px;
+    .tab-btn.active {
+      color: #0066cc;
+      border-bottom-color: #0066cc;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Form styles */
+    form label {
+      display: block;
+      margin-bottom: 12px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #333;
+    }
+
+    form input,
+    form textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
       border-radius: 6px;
-      overflow-x: auto;
-      font-size: 12px;
+      font-size: 14px;
+      margin-top: 4px;
     }
 
+    form input:focus,
+    form textarea:focus {
+      outline: none;
+      border-color: #0066cc;
+      box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+    }
+
+    /* Q&A list */
+    .qa-controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .qa-controls input {
+      flex: 1;
+    }
+
+    .qa-list {
+      max-height: 400px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .qa-item {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+    }
+
+    .qa-item-content {
+      flex: 1;
+      margin-right: 12px;
+    }
+
+    .qa-item-question {
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: #1a1a2e;
+    }
+
+    .qa-item-answer {
+      font-size: 13px;
+      color: #666;
+      white-space: pre-wrap;
+    }
+
+    .qa-item-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .no-results {
+      text-align: center;
+      color: #999;
+      padding: 40px;
+    }
+
+    /* Modal */
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal.hidden {
+      display: none;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 500px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    /* Import/Export section */
+    .import-export-section h3 {
+      margin-top: 30px;
+      margin-bottom: 10px;
+    }
+
+    .import-export-section p {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+    .import-export-section button {
+      margin-bottom: 20px;
+    }
+
+    /* Backend status */
     .status-check {
       display: flex;
       align-items: center;
       gap: 10px;
       padding: 12px;
-      background: white;
+      background: #f8fafc;
       border-radius: 6px;
-      margin: 10px 0;
+      margin: 15px 0;
     }
 
     .status-indicator {
@@ -76,96 +224,157 @@
       50% { opacity: 0.5; }
     }
 
-    .back-button {
+    .backend-settings h3 {
+      margin-bottom: 10px;
+    }
+
+    .backend-settings p {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+    .backend-settings ul {
+      margin-left: 20px;
       margin-bottom: 20px;
+      color: #666;
+      font-size: 14px;
     }
 
-    .info-box {
-      background: #dbeafe;
-      border: 1px solid #3b82f6;
-      padding: 12px;
-      border-radius: 6px;
-      margin: 10px 0;
-      font-size: 13px;
-    }
-
-    .info-box strong {
-      color: #1e40af;
+    .backend-settings ul li {
+      margin-bottom: 6px;
     }
   </style>
 </head>
 <body>
   <div class="settings-container">
-    <button class="btn back-button" id="backBtn">← Back to Extension</button>
+    <button class="btn back-button" id="backBtn">← Back</button>
 
-    <h1>Setup Guide</h1>
+    <h1>Settings & Q&A Management</h1>
 
-    <div class="status-check">
-      <div class="status-indicator checking" id="statusIndicator"></div>
-      <div>
-        <strong>Backend Status:</strong>
-        <span id="statusText">Checking...</span>
-      </div>
-      <button class="btn btn-small" id="refreshBtn" style="margin-left: auto;">Refresh</button>
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="personal">Personal Info</button>
+      <button class="tab-btn" data-tab="questions">Q&A Bank</button>
+      <button class="tab-btn" data-tab="import-export">Import/Export</button>
+      <button class="tab-btn" data-tab="backend">Backend (Optional)</button>
     </div>
 
-    <div class="info-box">
-      <strong>Quick Setup:</strong> The backend needs to be running for the extension to work.
-      If you haven't started it yet, follow the steps below.
+    <!-- Tab 1: Personal Info -->
+    <div class="tab-content active" id="tab-personal">
+      <h2>Personal Information</h2>
+      <form id="personalInfoForm">
+        <label>
+          Full Name:
+          <input type="text" name="full_name" placeholder="John Doe" />
+        </label>
+        <label>
+          Email:
+          <input type="email" name="email" placeholder="john@example.com" />
+        </label>
+        <label>
+          Phone:
+          <input type="tel" name="phone" placeholder="+44 1234 567890" />
+        </label>
+        <label>
+          Location:
+          <input type="text" name="location" placeholder="London, UK" />
+        </label>
+        <label>
+          LinkedIn:
+          <input type="url" name="linkedin" placeholder="linkedin.com/in/johndoe" />
+        </label>
+        <button type="submit" class="btn btn-primary">Save Personal Info</button>
+      </form>
     </div>
 
-    <div class="setup-wizard">
-      <div class="wizard-step">
-        <h3>Step 1: Start the Backend</h3>
-        <p>Navigate to the JobRadar folder and double-click:</p>
-        <code>start_jobradar.bat</code>
-        <p style="margin-top: 10px;">This will start both the backend API (port 5000) and dashboard (port 8501).</p>
-        <p><strong>Keep this window open</strong> while using the extension.</p>
+    <!-- Tab 2: Q&A Bank -->
+    <div class="tab-content" id="tab-questions">
+      <h2>Q&A Bank</h2>
+      <p style="color: #666; margin-bottom: 20px;">Manage your saved answers to common application questions.</p>
+
+      <div class="qa-controls">
+        <input type="search" id="qaSearch" placeholder="Search questions..." />
+        <button id="addQABtn" class="btn btn-primary">+ Add Question</button>
       </div>
 
-      <div class="wizard-step">
-        <h3>Step 2: Configure Your Profile (Optional)</h3>
-        <p>For better results, configure your profile with standard answers:</p>
-        <ol style="margin-left: 20px;">
-          <li>Copy <code>qa_databank.yaml.template</code> → <code>qa_databank.yaml</code></li>
-          <li>Edit <code>qa_databank.yaml</code> with your answers to common questions</li>
-          <li>The extension will match questions and provide your pre-written answers</li>
-        </ol>
+      <div id="qaList" class="qa-list">
+        <p class="no-results">Loading...</p>
       </div>
 
-      <div class="wizard-step">
-        <h3>Step 3: Add API Keys (Optional)</h3>
-        <p>For AI-powered question extraction (more accurate than regex):</p>
-        <ol style="margin-left: 20px;">
-          <li>Copy <code>.env.template</code> → <code>.env</code></li>
-          <li>Get a free API key from <a href="https://console.anthropic.com/" target="_blank">Anthropic Claude</a></li>
-          <li>Add it to <code>.env</code>:
-            <pre>ANTHROPIC_API_KEY=your-api-key-here</pre>
-          </li>
-          <li>Restart the backend (close and rerun <code>start_jobradar.bat</code>)</li>
-        </ol>
-        <div class="info-box">
-          <strong>Note:</strong> The extension works without API keys using regex fallback.
-          Add the key later if you want better question extraction.
+      <!-- Modal for Add/Edit -->
+      <div id="qaModal" class="modal hidden">
+        <div class="modal-content">
+          <h3 id="modalTitle">Add Question</h3>
+          <form id="qaForm">
+            <label>
+              Question:
+              <textarea name="question" rows="2" required placeholder="Why do you want to work here?"></textarea>
+            </label>
+            <label>
+              Answer:
+              <textarea name="answer" rows="4" required placeholder="I'm interested in this role because..."></textarea>
+            </label>
+            <div class="modal-actions">
+              <button type="submit" class="btn btn-primary">Save</button>
+              <button type="button" class="btn" id="cancelModal">Cancel</button>
+            </div>
+          </form>
         </div>
       </div>
+    </div>
 
-      <div class="wizard-step">
-        <h3>Step 4: Use the Extension</h3>
-        <ol style="margin-left: 20px;">
-          <li>Go to a job application page</li>
-          <li>Click the JobRadar icon in Chrome toolbar</li>
-          <li>Click "Copy Page Content"</li>
-          <li>Click "Parse Questions & Get Answers"</li>
-          <li>Review and copy answers into the application form</li>
-        </ol>
+    <!-- Tab 3: Import/Export -->
+    <div class="tab-content" id="tab-import-export">
+      <div class="import-export-section">
+        <h3>Export Your Q&A Data</h3>
+        <p>Download your Q&A databank as JSON for backup or sharing.</p>
+        <button id="exportBtn" class="btn btn-secondary">📥 Export to JSON</button>
+
+        <h3>Import Q&A Data</h3>
+        <p>Import from JSON file or sync from backend.</p>
+        <input type="file" id="importFile" accept=".json" style="display: none;" />
+        <button id="importBtn" class="btn btn-secondary">📤 Import from JSON</button>
+        <button id="syncFromBackendBtn" class="btn btn-secondary">🔄 Sync from Backend</button>
       </div>
     </div>
 
-    <div style="margin-top: 30px; text-align: center;">
-      <p style="color: #64748b; font-size: 13px;">
-        For detailed setup instructions, see <code>INSTALLATION_GUIDE.md</code> in the project folder.
-      </p>
+    <!-- Tab 4: Backend Settings -->
+    <div class="tab-content" id="tab-backend">
+      <div class="backend-settings">
+        <h3>Backend Connection (Optional)</h3>
+        <p>The extension works standalone. Connect to backend for advanced features:</p>
+        <ul>
+          <li>AI-powered question extraction (more accurate)</li>
+          <li>Answer usage tracking and analytics</li>
+          <li>Cross-device sync</li>
+        </ul>
+
+        <div class="status-check">
+          <div class="status-indicator checking" id="statusIndicator"></div>
+          <div style="flex: 1;">
+            <strong>Status:</strong>
+            <span id="statusText">Checking...</span>
+          </div>
+          <button class="btn btn-small" id="refreshBtn">Refresh</button>
+        </div>
+
+        <form id="backendSettingsForm">
+          <label>
+            Backend URL:
+            <input type="url" name="backend_url" value="http://localhost:5000" />
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" name="backend_enabled" checked />
+            Enable backend connection
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" name="auto_sync" checked />
+            Auto-sync Q&A data
+          </label>
+          <button type="submit" class="btn btn-primary">Save Settings</button>
+        </form>
+      </div>
     </div>
   </div>
 
