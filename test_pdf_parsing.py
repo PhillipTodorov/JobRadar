@@ -1,6 +1,6 @@
 """Test PDF parsing functionality."""
 
-from pypdf import PdfReader
+import pdfplumber
 from pathlib import Path
 
 def test_pdf_extraction():
@@ -11,7 +11,7 @@ def test_pdf_extraction():
     # Create a simple test - just verify the library works
     try:
         # Test that we can import and use the library
-        print("[OK] pypdf library imported successfully")
+        print("[OK] pdfplumber library imported successfully")
 
         # Check if there are any PDFs in the profile folder
         profile_dir = Path(__file__).parent / "profile"
@@ -25,17 +25,17 @@ def test_pdf_extraction():
                 print(f"\nTesting with: {pdf_path.name}")
                 print("-" * 50)
 
-                reader = PdfReader(pdf_path)
-                print(f"[OK] PDF opened successfully")
-                print(f"  Pages: {len(reader.pages)}")
+                with pdfplumber.open(pdf_path) as pdf:
+                    print(f"[OK] PDF opened successfully")
+                    print(f"  Pages: {len(pdf.pages)}")
 
-                # Extract text from first page
-                if reader.pages:
-                    first_page_text = reader.pages[0].extract_text()
-                    print(f"\n[OK] Text extraction successful")
-                    print(f"  First 200 characters:\n  {first_page_text[:200]}...")
-                else:
-                    print("[WARN] PDF has no pages")
+                    # Extract text from first page
+                    if pdf.pages:
+                        first_page_text = pdf.pages[0].extract_text()
+                        print(f"\n[OK] Text extraction successful")
+                        print(f"  First 200 characters:\n  {first_page_text[:200]}...")
+                    else:
+                        print("[WARN] PDF has no pages")
             else:
                 print("\n[INFO] No PDF files found in profile/ directory")
                 print("  You can test by uploading a PDF CV through the dashboard")
@@ -47,7 +47,7 @@ def test_pdf_extraction():
 
     except Exception as e:
         print(f"\n[ERROR] {e}")
-        print("  Make sure pypdf is installed: pip install pypdf")
+        print("  Make sure pdfplumber is installed: pip install pdfplumber")
         return False
 
     return True

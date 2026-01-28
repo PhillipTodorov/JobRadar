@@ -30,30 +30,765 @@ TOOLS_DIR = PROJECT_ROOT / "tools"
 
 # Page config
 st.set_page_config(
-    page_title="Job Scraper",
-    page_icon="briefcase",
+    page_title="JobRadar | Smart Job Search Automation",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# Minimal CSS for dark mode
+# Load Google Fonts, Font Awesome, and Material Icons
+st.markdown("""
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Material+Icons&family=Material+Icons+Outlined&display=swap" rel="stylesheet">
+""", unsafe_allow_html=True)
+
+# JavaScript to fix UI issues - using HTML component for better execution
+import streamlit.components.v1 as components
+components.html("""
+<script>
+(function() {
+    console.log('[JobRadar] UI fixer loaded');
+    let lastFixCount = { icons: 0, radios: 0, navIcons: 0 };
+
+    function fixUI() {
+        let changesMade = false;
+
+        // Fix collapse button text (faster interval catches Streamlit re-renders)
+        const iconSpans = parent.document.querySelectorAll('span[data-testid="stIconMaterial"]');
+        iconSpans.forEach((el) => {
+            const text = el.textContent.trim();
+            if (text === 'keyboard_double_arrow_left' || text === 'keyboard_double_arrow_right') {
+                el.textContent = text === 'keyboard_double_arrow_left' ? '‹' : '›';
+                el.style.setProperty('font-size', '28px', 'important');
+                el.style.setProperty('font-family', 'Arial, sans-serif', 'important');
+                changesMade = true;
+            }
+        });
+
+        // Aggressively hide radio button circles - target ALL possible elements
+        const radioSelectors = [
+            '[data-testid="stSidebar"] [role="radio"]',
+            '[data-testid="stSidebar"] input[type="radio"]',
+            '[data-testid="stSidebar"] .st-emotion-cache-1gulkj5',  // Streamlit's radio circle class
+            '[data-testid="stSidebar"] label > div:first-child',    // First div in label (usually the circle)
+        ];
+
+        let hiddenCount = 0;
+        radioSelectors.forEach(selector => {
+            parent.document.querySelectorAll(selector).forEach(el => {
+                el.style.setProperty('display', 'none', 'important');
+                el.style.setProperty('width', '0', 'important');
+                el.style.setProperty('height', '0', 'important');
+                el.style.setProperty('opacity', '0', 'important');
+                el.style.setProperty('position', 'absolute', 'important');
+                el.style.setProperty('left', '-9999px', 'important');
+                hiddenCount++;
+            });
+        });
+
+        // Add icons to navigation buttons using Material Icons
+        const navButtons = parent.document.querySelectorAll('[data-testid="stSidebar"] .stButton button');
+        const iconMap = {
+            'Jobs': 'work',
+            'Settings': 'settings',
+            'CV': 'description',
+            'Projects': 'rocket_launch',
+            'Actions': 'bolt',
+            'History': 'show_chart'
+        };
+
+        let iconsAdded = 0;
+        navButtons.forEach((button) => {
+            const buttonText = button.textContent.trim();
+            const iconName = iconMap[buttonText];
+
+            if (iconName && !button.querySelector('.nav-icon')) {
+                // Create icon span
+                const iconSpan = document.createElement('span');
+                iconSpan.className = 'nav-icon material-icons';
+                iconSpan.textContent = iconName;
+                iconSpan.style.cssText = 'font-size: 20px; margin-right: 10px; vertical-align: middle; font-family: "Material Icons" !important;';
+
+                // Insert at the beginning of button
+                button.insertBefore(iconSpan, button.firstChild);
+                iconsAdded++;
+            }
+        });
+
+        // Only log when we make changes (reduces console spam)
+        if (changesMade && lastFixCount.icons !== iconSpans.length) {
+            console.log('[JobRadar] Fixed collapse button icons');
+            lastFixCount.icons = iconSpans.length;
+        }
+        if (hiddenCount > 0 && lastFixCount.radios !== hiddenCount) {
+            console.log('[JobRadar] Hidden', hiddenCount, 'radio elements');
+            lastFixCount.radios = hiddenCount;
+        }
+        if (iconsAdded > 0 && lastFixCount.navIcons !== iconsAdded) {
+            console.log('[JobRadar] Added', iconsAdded, 'navigation icons');
+            lastFixCount.navIcons = iconsAdded;
+        }
+    }
+
+    // Run faster (100ms) to catch Streamlit re-renders before they're visible
+    fixUI();
+    setInterval(fixUI, 100);
+})();
+</script>
+""", height=0)
+
+# Professional dark theme design system - Linear/Vercel inspired
 st.markdown("""
 <style>
-/* Compact metrics */
-[data-testid="stMetric"] {
-    background: #1e293b;
-    padding: 0.5rem 1rem;
-    border-radius: 8px;
+/* CSS Version: v2.7.4 - Fixed element-container spacing in sidebar */
+/* ============================================ */
+/* DESIGN SYSTEM FOUNDATION */
+/* ============================================ */
+
+:root {
+    /* Base colors - deeper, more sophisticated */
+    --color-bg-primary: #000000;
+    --color-bg-secondary: #0a0a0a;
+    --color-bg-tertiary: #111111;
+    --color-bg-elevated: #1a1a1a;
+
+    /* Borders - subtle and refined */
+    --color-border-subtle: rgba(255, 255, 255, 0.06);
+    --color-border-medium: rgba(255, 255, 255, 0.1);
+    --color-border-strong: rgba(255, 255, 255, 0.15);
+
+    /* Text - proper contrast */
+    --color-text-primary: #ffffff;
+    --color-text-secondary: rgba(255, 255, 255, 0.7);
+    --color-text-muted: rgba(255, 255, 255, 0.5);
+    --color-text-disabled: rgba(255, 255, 255, 0.3);
+
+    /* Accent colors - vibrant but tasteful */
+    --color-accent-blue: #3b82f6;
+    --color-accent-blue-hover: #60a5fa;
+    --color-accent-cyan: #06b6d4;
+    --color-accent-purple: #8b5cf6;
+    --color-success: #10b981;
+    --color-warning: #f59e0b;
+    --color-danger: #ef4444;
+
+    /* Glassmorphism */
+    --glass-bg: rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.08);
+
+    /* Shadows - softer and more realistic */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 2px 8px 0 rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 4px 16px 0 rgba(0, 0, 0, 0.5);
+    --shadow-xl: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+    --shadow-glow-blue: 0 0 24px rgba(59, 130, 246, 0.15);
+
+    /* Spacing scale */
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 1rem;
+    --space-lg: 1.5rem;
+    --space-xl: 2rem;
+    --space-2xl: 3rem;
 }
-[data-testid="stMetricValue"] { font-size: 1.5rem; }
-[data-testid="stMetricLabel"] { font-size: 0.8rem; }
 
-/* Score colors for dark mode */
-.score-high { color: #10b981; font-weight: 600; }
-.score-med { color: #f59e0b; font-weight: 600; }
-.score-low { color: #94a3b8; }
+/* Fix Material Icons rendering */
+.material-icons,
+.material-icons-outlined,
+[class*="material-icons"] {
+    font-family: 'Material Icons', 'Material Icons Outlined' !important;
+    font-weight: normal !important;
+    font-style: normal !important;
+    font-size: 24px !important;
+    line-height: 1 !important;
+    letter-spacing: normal !important;
+    text-transform: none !important;
+    display: inline-block !important;
+    white-space: nowrap !important;
+    word-wrap: normal !important;
+    direction: ltr !important;
+    -webkit-font-smoothing: antialiased !important;
+    text-rendering: optimizeLegibility !important;
+}
 
-/* Compact expanders */
-.streamlit-expanderHeader { font-size: 0.9rem; }
+/* Global typography */
+* {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Override font-family for icon elements */
+.material-icons *,
+.material-icons-outlined *,
+[class*="material-icons"] * {
+    font-family: inherit !important;
+}
+
+/* Main app container with subtle gradient */
+.stApp {
+    background: radial-gradient(ellipse at top, #0a0a0a 0%, #000000 100%);
+}
+
+.main .block-container {
+    padding-top: var(--space-xl);
+    padding-bottom: var(--space-2xl);
+    max-width: 1400px;
+}
+
+/* ============================================ */
+/* SIDEBAR NAVIGATION - Linear inspired */
+/* ============================================ */
+
+[data-testid="stSidebar"] {
+    background: var(--color-bg-primary);
+    border-right: 1px solid var(--color-border-subtle);
+    backdrop-filter: blur(20px);
+}
+
+[data-testid="stSidebar"] > div:first-child {
+    padding-top: var(--space-xl);
+}
+
+/* Sidebar title - gradient text */
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h1 {
+    font-size: 1.5rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--color-accent-blue) 0%, var(--color-accent-cyan) 60%, var(--color-accent-purple) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: var(--space-xl);
+    text-align: center;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+}
+
+/* Navigation buttons with Material Icons (icons injected via JavaScript) */
+[data-testid="stSidebar"] .stButton {
+    margin-bottom: 0 !important;
+    margin-top: 0 !important;
+}
+
+/* Remove spacing from element containers in sidebar */
+[data-testid="stSidebar"] .element-container {
+    margin-bottom: 0 !important;
+    margin-top: 0 !important;
+}
+
+[data-testid="stSidebar"] .stButton > button {
+    border-radius: 8px !important;
+    padding: 0.35rem 0.75rem !important;
+    font-size: 0.875rem !important;
+    font-weight: 500 !important;
+    text-align: left !important;
+    transition: all 0.2s ease !important;
+    border: 1px solid transparent !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="secondary"] {
+    background: transparent !important;
+    border-color: transparent !important;
+    color: var(--color-text-secondary) !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="secondary"]:hover {
+    background: rgba(255, 255, 255, 0.03) !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+    color: var(--color-text-primary) !important;
+    transform: translateX(2px) !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"] {
+    background: rgba(59, 130, 246, 0.1) !important;
+    border-color: rgba(59, 130, 246, 0.4) !important;
+    color: var(--color-text-primary) !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"]:hover {
+    background: rgba(59, 130, 246, 0.15) !important;
+    border-color: rgba(59, 130, 246, 0.5) !important;
+    transform: none !important;
+}
+
+/* Hide Material Icons keyboard text to prevent flash on collapse */
+span[data-testid="stIconMaterial"] {
+    font-family: 'Material Icons', 'Material Icons Outlined' !important;
+    font-size: 24px !important;
+}
+
+/* Sidebar footer */
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] .caption {
+    color: var(--color-text-disabled);
+    font-size: 0.75rem;
+}
+
+/* Fix sidebar collapse button - JavaScript handles the actual text replacement */
+button[kind="icon"],
+button[data-testid="baseButton-header"],
+[data-testid="collapsedControl"] button {
+    font-size: 24px !important;
+    font-weight: bold !important;
+}
+
+/* ============================================ */
+/* PAGE HEADERS */
+/* ============================================ */
+
+h1 {
+    font-size: 2rem !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.04em !important;
+    line-height: 1.1 !important;
+    margin-bottom: var(--space-sm) !important;
+    color: var(--color-text-primary) !important;
+}
+
+h2 {
+    font-size: 1.25rem !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.02em !important;
+    margin-top: var(--space-xl) !important;
+    margin-bottom: var(--space-md) !important;
+    color: var(--color-text-primary) !important;
+}
+
+h3 {
+    font-size: 1rem !important;
+    font-weight: 600 !important;
+    margin-bottom: var(--space-sm) !important;
+    color: var(--color-text-primary) !important;
+}
+
+.caption, [data-testid="stCaptionContainer"] {
+    color: var(--color-text-muted) !important;
+    font-size: 0.875rem !important;
+    line-height: 1.5 !important;
+}
+
+/* ============================================ */
+/* METRICS & KPI CARDS - Glassmorphism */
+/* ============================================ */
+
+[data-testid="stMetric"] {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    padding: var(--space-lg);
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+[data-testid="stMetric"]::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+}
+
+[data-testid="stMetric"]:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg), var(--shadow-glow-blue);
+    border-color: rgba(59, 130, 246, 0.2);
+    background: rgba(59, 130, 246, 0.03);
+}
+
+[data-testid="stMetricValue"] {
+    font-size: 2.25rem !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.04em !important;
+    background: linear-gradient(135deg, var(--color-accent-blue) 0%, var(--color-accent-cyan) 70%, var(--color-accent-purple) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1 !important;
+}
+
+[data-testid="stMetricLabel"] {
+    font-size: 0.75rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.1em !important;
+    font-weight: 600 !important;
+    color: var(--color-text-muted) !important;
+    margin-bottom: var(--space-sm) !important;
+}
+
+/* ============================================ */
+/* BUTTONS - Refined and subtle */
+/* ============================================ */
+
+.stButton > button {
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    padding: 0.625rem 1.25rem;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid var(--color-border-subtle);
+    box-shadow: none;
+    letter-spacing: -0.01em;
+}
+
+.stButton > button:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.stButton > button[kind="primary"] {
+    background: var(--color-accent-blue);
+    border-color: var(--color-accent-blue);
+    color: white;
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.1);
+}
+
+.stButton > button[kind="primary"]:hover {
+    background: var(--color-accent-blue-hover);
+    border-color: var(--color-accent-blue-hover);
+    box-shadow: var(--shadow-glow-blue), var(--shadow-sm);
+}
+
+.stButton > button[kind="secondary"] {
+    background: var(--glass-bg);
+    backdrop-filter: blur(8px);
+    border-color: var(--color-border-medium);
+    color: var(--color-text-secondary);
+}
+
+.stButton > button[kind="secondary"]:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--color-border-strong);
+    color: var(--color-text-primary);
+}
+
+/* Link buttons */
+.stLinkButton > a {
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    background: var(--glass-bg);
+    border: 1px solid var(--color-border-subtle);
+}
+
+/* ============================================ */
+/* FORM INPUTS - Clean and minimal */
+/* ============================================ */
+
+.stTextInput > div > div > input,
+.stTextArea > div > div > textarea,
+.stNumberInput > div > div > input,
+.stSelectbox > div > div > div {
+    background: var(--glass-bg) !important;
+    backdrop-filter: blur(8px) !important;
+    border: 1px solid var(--color-border-subtle) !important;
+    border-radius: 8px !important;
+    color: var(--color-text-primary) !important;
+    font-size: 0.875rem !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    padding: 0.625rem 0.875rem !important;
+}
+
+.stTextInput > div > div > input:focus,
+.stTextArea > div > div > textarea:focus,
+.stNumberInput > div > div > input:focus {
+    border-color: rgba(59, 130, 246, 0.5) !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08) !important;
+    background: rgba(59, 130, 246, 0.02) !important;
+}
+
+/* Input labels */
+.stTextInput > label,
+.stTextArea > label,
+.stNumberInput > label,
+.stSelectbox > label {
+    font-weight: 600 !important;
+    font-size: 0.8125rem !important;
+    color: var(--color-text-secondary) !important;
+    margin-bottom: var(--space-sm) !important;
+    letter-spacing: -0.01em !important;
+}
+
+/* ============================================ */
+/* TABS - Linear style */
+/* ============================================ */
+
+.stTabs [data-baseweb="tab-list"] {
+    gap: var(--space-sm);
+    background: transparent;
+    border-bottom: 1px solid var(--color-border-subtle);
+    padding-bottom: 0;
+}
+
+.stTabs [data-baseweb="tab"] {
+    font-weight: 500;
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    padding: 0.75rem 1.25rem;
+    border-radius: 6px 6px 0 0;
+    background: transparent;
+    border: none;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    background: var(--glass-bg);
+    color: var(--color-text-secondary);
+}
+
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    background: var(--glass-bg);
+    color: var(--color-text-primary);
+    font-weight: 600;
+}
+
+.stTabs [data-baseweb="tab"][aria-selected="true"]::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--color-accent-blue);
+}
+
+/* ============================================ */
+/* CONTAINERS & CARDS - Glassmorphism */
+/* ============================================ */
+
+.element-container {
+    margin-bottom: var(--space-md);
+}
+
+/* Dividers - subtle */
+hr {
+    border: none !important;
+    height: 1px !important;
+    background: var(--color-border-subtle) !important;
+    margin: var(--space-xl) 0 !important;
+}
+
+/* Scrollable containers */
+[data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] {
+    background: var(--glass-bg);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 8px;
+    padding: var(--space-md);
+}
+
+/* Code blocks */
+.stCodeBlock {
+    border-radius: 8px;
+    border: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-secondary);
+}
+
+/* ============================================ */
+/* SCORE BADGES - More sophisticated */
+/* ============================================ */
+
+.score-high {
+    color: var(--color-success);
+    font-weight: 700;
+    font-size: 1.375rem;
+    letter-spacing: -0.02em;
+}
+
+.score-med {
+    color: var(--color-warning);
+    font-weight: 700;
+    font-size: 1.375rem;
+    letter-spacing: -0.02em;
+}
+
+.score-low {
+    color: var(--color-text-disabled);
+    font-weight: 600;
+    font-size: 1.125rem;
+}
+
+/* ============================================ */
+/* DATA DISPLAY */
+/* ============================================ */
+
+/* Expanders (if any remain) */
+.streamlit-expanderHeader {
+    font-size: 0.875rem;
+    font-weight: 600;
+    background: var(--glass-bg);
+    backdrop-filter: blur(8px);
+    border-radius: 8px;
+    border: 1px solid var(--color-border-subtle);
+    transition: all 0.2s;
+}
+
+.streamlit-expanderHeader:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--color-border-medium);
+}
+
+/* Success/Warning/Error messages - glassmorphic */
+.stSuccess {
+    background: rgba(16, 185, 129, 0.08);
+    backdrop-filter: blur(8px);
+    border-left: 2px solid var(--color-success);
+    border-radius: 8px;
+    padding: var(--space-md);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    border-left-width: 2px;
+}
+
+.stWarning {
+    background: rgba(245, 158, 11, 0.08);
+    backdrop-filter: blur(8px);
+    border-left: 2px solid var(--color-warning);
+    border-radius: 8px;
+    padding: var(--space-md);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-left-width: 2px;
+}
+
+.stError {
+    background: rgba(239, 68, 68, 0.08);
+    backdrop-filter: blur(8px);
+    border-left: 2px solid var(--color-danger);
+    border-radius: 8px;
+    padding: var(--space-md);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-left-width: 2px;
+}
+
+.stInfo {
+    background: rgba(59, 130, 246, 0.08);
+    backdrop-filter: blur(8px);
+    border-left: 2px solid var(--color-accent-blue);
+    border-radius: 8px;
+    padding: var(--space-md);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-left-width: 2px;
+}
+
+/* ============================================ */
+/* JOB CARDS - Custom styling for jobs page */
+/* ============================================ */
+
+.job-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: var(--space-lg);
+    margin-bottom: 0.4rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: var(--shadow-sm);
+}
+
+.job-card:hover {
+    border-color: rgba(59, 130, 246, 0.3);
+    box-shadow: var(--shadow-md), var(--shadow-glow-blue);
+    transform: translateY(-2px);
+}
+
+.job-score-badge {
+    display: inline-block;
+    padding: 0.375rem 0.875rem;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 0.875rem;
+    letter-spacing: -0.01em;
+}
+
+.job-score-high {
+    background: rgba(16, 185, 129, 0.12);
+    color: var(--color-success);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.job-score-med {
+    background: rgba(245, 158, 11, 0.12);
+    color: var(--color-warning);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.job-score-low {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border-subtle);
+}
+
+/* ============================================ */
+/* UTILITIES */
+/* ============================================ */
+
+/* Hide Streamlit branding */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+
+/* Smooth scrolling */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Selection color */
+::selection {
+    background: rgba(59, 130, 246, 0.2);
+    color: var(--color-text-primary);
+}
+
+/* Focus visible for accessibility */
+*:focus-visible {
+    outline: 2px solid var(--color-accent-blue);
+    outline-offset: 2px;
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ============================================ */
+/* RESPONSIVE ADJUSTMENTS */
+/* ============================================ */
+
+@media (max-width: 768px) {
+    :root {
+        --space-xl: 1.5rem;
+        --space-2xl: 2rem;
+    }
+
+    h1 { font-size: 1.5rem !important; }
+    h2 { font-size: 1.125rem !important; }
+
+    [data-testid="stMetricValue"] {
+        font-size: 1.75rem !important;
+    }
+
+    .main .block-container {
+        padding-left: var(--space-md);
+        padding-right: var(--space-md);
+    }
+
+    [data-testid="stMetric"] {
+        padding: var(--space-md);
+    }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -192,8 +927,41 @@ def check_backend_status():
 
 # === Navigation ===
 
-st.sidebar.title("JobRadar")
-page = st.sidebar.radio("Navigation", ["Jobs", "Settings", "CV", "Projects", "Actions", "History"], label_visibility="collapsed")
+st.sidebar.markdown("# JobRadar")
+st.sidebar.markdown("---")
+
+# Initialize page state
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = "Jobs"
+
+# Custom navigation with Material Icons (already loaded)
+nav_items = [
+    ("Jobs", "work"),           # briefcase icon
+    ("Settings", "settings"),   # settings icon
+    ("CV", "description"),      # document icon
+    ("Projects", "rocket_launch"),  # rocket icon
+    ("Actions", "bolt"),        # lightning icon
+    ("History", "show_chart"),  # chart icon
+]
+
+# Render navigation buttons
+for page_name, icon in nav_items:
+    is_active = st.session_state.current_page == page_name
+
+    # Use Material Icons with button text
+    if st.sidebar.button(
+        f"{page_name}",
+        key=f"nav_{page_name}",
+        use_container_width=True,
+        type="primary" if is_active else "secondary"
+    ):
+        st.session_state.current_page = page_name
+        st.rerun()
+
+page = st.session_state.current_page
+
+st.sidebar.markdown("---")
+st.sidebar.caption("v1.0.0 • Built with Claude Code")
 
 
 # ============================================================
@@ -201,6 +969,11 @@ page = st.sidebar.radio("Navigation", ["Jobs", "Settings", "CV", "Projects", "Ac
 # ============================================================
 
 if page == "Jobs":
+    # Page header
+    st.markdown("# Job Dashboard")
+    st.caption("Browse and filter scraped jobs by fit score")
+    st.markdown("---")
+
     jobs = load_jobs()
 
     # Stats row - compact
@@ -247,14 +1020,27 @@ if page == "Jobs":
             list_col, detail_col = st.columns([1, 1.2])
 
             with list_col:
+                st.markdown("**Job Matches**")
                 with st.container(height=450):
                     for idx, job in enumerate(filtered):
                         score = job.get('fit_score', 0)
-                        emoji = "🟢" if score >= 70 else "🟡" if score >= 40 else "⚪"
                         is_sel = st.session_state.sel_idx == idx
 
+                        # Create clean job card
+                        score_badge = ""
+                        if score >= 70:
+                            score_badge = f'<span class="job-score-badge job-score-high">{score}</span>'
+                        elif score >= 40:
+                            score_badge = f'<span class="job-score-badge job-score-med">{score}</span>'
+                        else:
+                            score_badge = f'<span class="job-score-badge job-score-low">{score}</span>'
+
+                        # Job title and company
+                        title = job['title'][:40] + "..." if len(job['title']) > 40 else job['title']
+                        company = job['company'][:25] + "..." if len(job['company']) > 25 else job['company']
+
                         if st.button(
-                            f"{emoji} {score} | {job['title'][:28]}... @ {job['company'][:18]}",
+                            f"{score} · {title}\n{company}",
                             key=f"j{idx}",
                             use_container_width=True,
                             type="primary" if is_sel else "secondary",
@@ -272,7 +1058,19 @@ if page == "Jobs":
 
                 st.markdown(f"### {job['title']}")
                 st.markdown(f"**{job['company']}** · :{score_color}[Score: {score}]")
-                st.caption(f"📍 {job['location']} · 📅 {job.get('date_posted', 'N/A')} · 💰 {job.get('salary', 'Not listed')}")
+
+                # Clean info line without emojis
+                info_parts = []
+                if job.get('location'):
+                    info_parts.append(job['location'])
+                if job.get('date_posted'):
+                    info_parts.append(job.get('date_posted'))
+                if job.get('salary'):
+                    info_parts.append(job.get('salary'))
+                else:
+                    info_parts.append("Salary not listed")
+
+                st.caption(" · ".join(info_parts))
 
                 # Action buttons
                 b1, b2 = st.columns(2)
@@ -297,19 +1095,21 @@ if page == "Jobs":
                             st.session_state['show_report'] = company
                             st.rerun()
 
-                # Show report if requested
+                st.divider()
+
+                # Show report OR description
                 if st.session_state.get('show_report') == job.get('company'):
                     reports = load_company_reports()
                     if job.get('company') in reports:
-                        st.markdown("---")
                         st.markdown(reports[job.get('company')])
-                        if st.button("Close", key="close_rep"):
+                        if st.button("Close Report", key="close_rep", use_container_width=True):
                             st.session_state['show_report'] = None
                             st.rerun()
-
-            # Job description - full width below
-            with st.expander("Job Description", expanded=False):
-                st.write(job.get("description", "No description available."))
+                else:
+                    # Show job description inline
+                    st.markdown("**Job Description**")
+                    with st.container(height=300):
+                        st.write(job.get("description", "No description available."))
 
 
 # ============================================================
@@ -317,7 +1117,9 @@ if page == "Jobs":
 # ============================================================
 
 elif page == "Settings":
-    st.title("Settings")
+    st.markdown("# Settings")
+    st.caption("Configure your profile, job preferences, and Q&A databank")
+    st.markdown("---")
 
     # Load all data
     profile = load_profile()
@@ -329,11 +1131,14 @@ elif page == "Settings":
     locations = user.get("locations", {})
     salary = user.get("salary", {})
     search_params = config.get("search_params", {})
+    personal = databank.get("personal_info", {})
 
-    # --- Personal Info ---
-    with st.expander("Personal Info", expanded=True):
-        personal = databank.get("personal_info", {})
+    # Use tabs for different setting sections
+    tab1, tab2, tab3, tab4 = st.tabs(["Profile", "Job Search", "Q&A Bank", "Advanced"])
 
+    with tab1:
+        # Personal Info
+        st.subheader("Personal Information")
         c1, c2 = st.columns(2)
         with c1:
             new_name = st.text_input("Name", value=personal.get("full_name", ""), key="p_name")
@@ -357,15 +1162,17 @@ elif page == "Settings":
             databank["personal_info"] = new_personal
             save_qa_databank(databank)
 
-    # --- Job Preferences ---
-    with st.expander("Job Preferences", expanded=True):
+        st.divider()
+
+        # Job Preferences
+        st.subheader("Job Preferences")
         c1, c2 = st.columns(2)
 
         with c1:
             new_req = st.text_area(
                 "Required Skills (one per line)",
                 value="\n".join(skills.get("required", [])),
-                height=100, key="s_req"
+                height=120, key="s_req"
             )
             new_locs = st.text_area(
                 "Preferred Locations (one per line)",
@@ -377,7 +1184,7 @@ elif page == "Settings":
             new_pref = st.text_area(
                 "Preferred Skills (one per line)",
                 value="\n".join(skills.get("preferred", [])),
-                height=100, key="s_pref"
+                height=120, key="s_pref"
             )
             c2a, c2b = st.columns(2)
             with c2a:
@@ -406,15 +1213,16 @@ elif page == "Settings":
             save_profile(new_profile)
             profile = new_profile
 
-    # --- Search Queries ---
-    with st.expander("Search Queries", expanded=True):
+    with tab2:
+        # Search Configuration
+        st.subheader("Search Configuration")
         c1, c2 = st.columns(2)
 
         with c1:
             new_titles = st.text_area(
                 "Job Titles to Search (one per line)",
                 value="\n".join(search_params.get("titles", [])),
-                height=100, key="q_titles"
+                height=120, key="q_titles"
             )
 
         with c2:
@@ -442,12 +1250,14 @@ elif page == "Settings":
         if new_config != config:
             save_config(new_config)
 
-    # --- Dealbreakers ---
-    with st.expander("Dealbreakers", expanded=False):
+        st.divider()
+
+        # Dealbreakers
+        st.subheader("Dealbreakers")
         new_deal = st.text_area(
             "Keywords that disqualify a job (one per line)",
             value="\n".join(user.get("dealbreakers", [])),
-            height=80, key="deal"
+            height=100, key="deal"
         )
 
         # Auto-save dealbreakers
@@ -456,41 +1266,47 @@ elif page == "Settings":
             profile["profile"]["dealbreakers"] = new_dealbreakers
             save_profile(profile)
 
-    # --- Q&A Bank ---
-    with st.expander("Q&A Bank", expanded=False):
+    with tab3:
+        # Q&A Bank
+        st.subheader("Q&A Bank")
         st.caption("Saved answers for the Chrome extension")
 
         questions = databank.get("questions", {})
-        updated_questions = {}
 
-        for question, answer in questions.items():
-            updated_questions[question] = st.text_area(
-                question, value=answer or "", height=80,
-                key=f"qa_{hash(question)}", label_visibility="visible"
-            )
-
-        # Auto-save Q&A changes
-        if updated_questions != questions:
-            databank["questions"] = updated_questions
-            save_qa_databank(databank)
+        # Show existing Q&A in a cleaner format
+        if questions:
+            for idx, (question, answer) in enumerate(questions.items()):
+                with st.container():
+                    st.markdown(f"**Q{idx+1}:** {question}")
+                    new_answer = st.text_area(
+                        "Answer", value=answer or "", height=60,
+                        key=f"qa_{hash(question)}", label_visibility="collapsed"
+                    )
+                    # Auto-save changes
+                    if new_answer != answer:
+                        databank["questions"][question] = new_answer
+                        save_qa_databank(databank)
+                    st.markdown("---")
+        else:
+            st.info("No questions saved yet. Add your first one below.")
 
         # Add new question
-        st.markdown("---")
         st.markdown("**Add New Question**")
-        c1, c2 = st.columns([1, 2])
+        c1, c2, c3 = st.columns([2, 3, 1])
         with c1:
             new_q = st.text_input("Question", key="new_q", label_visibility="collapsed", placeholder="Question...")
         with c2:
             new_a = st.text_input("Answer", key="new_a", label_visibility="collapsed", placeholder="Your answer...")
+        with c3:
+            if st.button("Add", key="add_qa", type="primary", use_container_width=True):
+                if new_q:
+                    databank["questions"][new_q] = new_a
+                    save_qa_databank(databank)
+                    st.rerun()
 
-        if st.button("Add", key="add_qa"):
-            if new_q:
-                databank["questions"][new_q] = new_a
-                save_qa_databank(databank)
-                st.rerun()
-
-    # --- Work Authorization ---
-    with st.expander("Work Authorization", expanded=False):
+    with tab4:
+        # Work Authorization
+        st.subheader("Work Authorization")
         work_auth = databank.get("work_authorization", {})
 
         c1, c2, c3 = st.columns(3)
@@ -530,8 +1346,9 @@ elif page == "Settings":
 # ============================================================
 
 elif page == "CV":
-    st.title("CV / Resume Parser")
+    st.markdown("# CV Parser")
     st.caption("Upload your CV to automatically extract information")
+    st.markdown("---")
 
     # File uploader
     uploaded_file = st.file_uploader(
@@ -561,21 +1378,22 @@ elif page == "CV":
                 with open(cv_path, 'r', encoding='utf-8') as f:
                     cv_text = f.read()
             elif uploaded_file.name.endswith('.pdf'):
-                from pypdf import PdfReader
-                reader = PdfReader(cv_path)
-                cv_text = ""
-                for page in reader.pages:
-                    text = page.extract_text()
-                    if text:
-                        cv_text += text + "\n"
+                import pdfplumber
+                with pdfplumber.open(cv_path) as pdf:
+                    cv_text = ""
+                    for page in pdf.pages:
+                        text = page.extract_text()
+                        if text:
+                            cv_text += text + "\n"
                 cv_text = cv_text.strip()
             else:
                 cv_text = ""
 
             if cv_text:
-                # Show preview
-                with st.expander("CV Preview", expanded=False):
-                    st.text_area("", cv_text[:1000] + "..." if len(cv_text) > 1000 else cv_text, height=200, disabled=True)
+                # Show preview inline
+                st.markdown("**CV Preview**")
+                with st.container(height=200):
+                    st.text(cv_text[:1500] + "..." if len(cv_text) > 1500 else cv_text)
 
                 st.divider()
 
@@ -708,8 +1526,9 @@ Only include fields that are present in the CV. Return valid JSON only."""
 # ============================================================
 
 elif page == "Projects":
-    st.title("GitHub Projects")
+    st.markdown("# GitHub Projects")
     st.caption("Showcase your projects for job applications")
+    st.markdown("---")
 
     # Load or initialize projects
     projects_path = PROJECT_ROOT / "github_projects.yaml"
@@ -721,9 +1540,14 @@ elif page == "Projects":
 
     projects = projects_data.get("projects", [])
 
-    # Add new project
-    with st.expander("Add New Project", expanded=len(projects) == 0):
+    # Add new project button
+    if st.button("Add New Project", type="primary"):
+        st.session_state['adding_project'] = True
+
+    # Show add form if requested
+    if st.session_state.get('adding_project', len(projects) == 0):
         with st.form("add_project"):
+            st.subheader("Add Project")
             c1, c2 = st.columns(2)
 
             with c1:
@@ -738,16 +1562,20 @@ elif page == "Projects":
             proj_desc = st.text_area(
                 "Description *",
                 placeholder="Brief description of what the project does and your contributions...",
-                height=100
+                height=80
             )
 
             proj_highlights = st.text_area(
                 "Key Achievements",
-                placeholder="- Implemented real-time notifications\n- Reduced load time by 50%\n- Deployed to 1000+ users",
-                height=80
+                placeholder="- Implemented real-time notifications\n- Reduced load time by 50%",
+                height=60
             )
 
-            submitted = st.form_submit_button("Add Project", type="primary", use_container_width=True)
+            c1, c2 = st.columns(2)
+            with c1:
+                submitted = st.form_submit_button("Add Project", type="primary", use_container_width=True)
+            with c2:
+                cancelled = st.form_submit_button("Cancel", use_container_width=True)
 
             if submitted:
                 if proj_name and proj_url and proj_desc and proj_tech:
@@ -768,50 +1596,53 @@ elif page == "Projects":
                     with open(projects_path, "w", encoding="utf-8") as f:
                         yaml.dump(projects_data, f, default_flow_style=False, allow_unicode=True)
 
+                    st.session_state['adding_project'] = False
                     st.success("Project added!")
                     st.rerun()
                 else:
                     st.error("Please fill in all required fields (marked with *)")
 
-    st.divider()
+            if cancelled:
+                st.session_state['adding_project'] = False
+                st.rerun()
 
-    # Display projects
+        st.divider()
+
+    # Display projects in clean cards
     if not projects:
-        st.info("No projects added yet. Add your first project above!")
+        st.info("No projects added yet. Click 'Add New Project' above!")
     else:
         st.subheader(f"Your Projects ({len(projects)})")
 
         for idx, project in enumerate(projects):
-            with st.expander(f"**{project['name']}** · {project.get('technologies', 'N/A')}", expanded=False):
-                # Project header
-                c1, c2 = st.columns([3, 1])
+            with st.container():
+                # Project card
+                c1, c2 = st.columns([4, 1])
 
                 with c1:
-                    st.markdown(f"**{project['name']}**")
-                    st.caption(f"Technologies: {project.get('technologies', 'N/A')}")
+                    st.markdown(f"### {project['name']}")
+                    caption_parts = [project.get('technologies', 'N/A')]
                     if project.get('role'):
-                        st.caption(f"Role: {project['role']}")
+                        caption_parts.append(project['role'])
+                    st.caption(" · ".join(caption_parts))
 
                 with c2:
-                    # Links
+                    # Action buttons
                     if project.get('url'):
                         st.link_button("GitHub", project['url'], use_container_width=True)
                     if project.get('demo_url'):
                         st.link_button("Demo", project['demo_url'], use_container_width=True)
 
-                st.divider()
-
                 # Description
-                st.markdown("**Description:**")
-                st.write(project.get('description', 'No description'))
+                st.markdown(project.get('description', 'No description'))
 
                 # Highlights
                 if project.get('highlights'):
                     st.markdown("**Key Achievements:**")
-                    st.write(project.get('highlights'))
+                    st.markdown(project.get('highlights'))
 
                 # Actions
-                col1, col2 = st.columns([1, 5])
+                col1, col2, col3 = st.columns([1, 2, 3])
                 with col1:
                     if st.button("Delete", key=f"del_{idx}", type="secondary", use_container_width=True):
                         projects.pop(idx)
@@ -821,7 +1652,7 @@ elif page == "Projects":
                         st.rerun()
 
                 with col2:
-                    if st.button("Copy Project Description", key=f"copy_{idx}", use_container_width=True):
+                    if st.button("Copy Description", key=f"copy_{idx}", use_container_width=True):
                         # Generate a formatted description for job applications
                         formatted = f"""**{project['name']}**
 Technologies: {project.get('technologies', 'N/A')}
@@ -831,10 +1662,10 @@ Technologies: {project.get('technologies', 'N/A')}
 
 GitHub: {project.get('url', '')}"""
                         st.code(formatted, language="text")
-                        st.success("Copy the text above to use in job applications!")
+
+                st.divider()
 
         # Export all projects
-        st.divider()
         if st.button("Export All Projects as JSON", use_container_width=True):
             st.download_button(
                 "Download",
@@ -850,7 +1681,9 @@ GitHub: {project.get('url', '')}"""
 # ============================================================
 
 elif page == "Actions":
-    st.title("Actions")
+    st.markdown("# Actions")
+    st.caption("Scrape jobs, manage backend, and test the Chrome extension")
+    st.markdown("---")
 
     # Main action buttons
     st.subheader("Scrape & Score Jobs")
@@ -863,10 +1696,10 @@ elif page == "Actions":
                 code, stdout, stderr = run_tool("run_job_scrape.py")
             if code == 0:
                 st.success("Done!")
+                st.rerun()
             else:
                 st.error("Failed")
-            with st.expander("Output", expanded=code != 0):
-                st.code(stdout + stderr)
+                st.code(stdout + stderr, language="text")
 
     with c2:
         if st.button("Re-score Jobs", use_container_width=True):
@@ -874,75 +1707,80 @@ elif page == "Actions":
                 code, stdout, stderr = run_tool("score_job_fit.py")
             if code == 0:
                 st.success("Done!")
+                st.rerun()
             else:
                 st.error("Failed")
-            with st.expander("Output", expanded=code != 0):
-                st.code(stdout + stderr)
+                st.code(stdout + stderr, language="text")
 
     # Quick stats
     jobs = load_jobs()
     if jobs:
-        st.caption(f"Jobs: {len(jobs)} total · {len([j for j in jobs if j.get('fit_score', 0) > 0])} matching")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Jobs", len(jobs))
+        c2.metric("Matching", len([j for j in jobs if j.get('fit_score', 0) > 0]))
+        c3.metric("High Fit (70+)", len([j for j in jobs if j.get('fit_score', 0) >= 70]))
 
     st.divider()
 
-    # Chrome Extension
-    with st.expander("Chrome Extension", expanded=True):
-        backend_running = check_backend_status()
+    # Chrome Extension Status
+    st.subheader("Chrome Extension")
+    backend_running = check_backend_status()
 
-        c1, c2 = st.columns([2, 1])
-        with c1:
-            if backend_running:
-                st.success("Backend running on localhost:5000")
-            else:
-                st.warning("Backend not running")
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        if backend_running:
+            st.success("Backend running on localhost:5000")
+        else:
+            st.warning("Backend not running")
 
-        with c2:
-            if not backend_running:
-                if st.button("Start Backend", type="primary", use_container_width=True):
-                    subprocess.Popen(
-                        [sys.executable, str(TOOLS_DIR / "answer_questions_api.py")],
-                        cwd=str(TOOLS_DIR),
-                        creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0,
+    with c2:
+        if not backend_running:
+            if st.button("Start Backend", type="primary", use_container_width=True):
+                subprocess.Popen(
+                    [sys.executable, str(TOOLS_DIR / "answer_questions_api.py")],
+                    cwd=str(TOOLS_DIR),
+                    creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0,
+                )
+                st.info("Starting... refresh in a few seconds")
+                time.sleep(2)
+                st.rerun()
+
+    # Quick setup instructions
+    st.markdown("""
+**Setup:** `chrome://extensions` → Enable Developer mode → Load unpacked → Select `chrome-extension/` folder
+
+**Usage:** Open job form → Click extension icon → Copy page content → Get answers
+    """)
+
+    # Q&A stats
+    databank = load_qa_databank()
+    questions_count = len([q for q, a in databank.get("questions", {}).items() if a])
+    st.caption(f"Q&A Bank: {questions_count} saved answers")
+
+    # Test API section (only if backend is running)
+    if backend_running:
+        st.divider()
+        st.subheader("Test API")
+        test_text = st.text_area("Paste application text to test:", height=100, placeholder="Paste job application text...")
+
+        if st.button("Test Extraction", type="primary"):
+            if test_text:
+                try:
+                    response = requests.post(
+                        "http://localhost:5000/api/parse-and-answer",
+                        json={"pageText": test_text, "context": {}},
+                        timeout=30
                     )
-                    st.info("Starting... refresh in a few seconds")
-                    time.sleep(2)
-                    st.rerun()
-
-        st.markdown("""
-**Setup:** `chrome://extensions` → Developer mode → Load unpacked → select `chrome-extension/`
-
-**Usage:** Open job application → Click extension → Copy Page → Parse & Get Answers → Copy answers to form
-        """)
-
-        # Q&A stats
-        databank = load_qa_databank()
-        questions_count = len([q for q, a in databank.get("questions", {}).items() if a])
-        st.caption(f"Q&A Bank: {questions_count} saved answers")
-
-    # Test API
-    if check_backend_status():
-        with st.expander("Test API", expanded=False):
-            test_text = st.text_area("Paste application text:", height=100, placeholder="Paste text to test...")
-
-            if st.button("Test"):
-                if test_text:
-                    try:
-                        response = requests.post(
-                            "http://localhost:5000/api/parse-and-answer",
-                            json={"pageText": test_text, "context": {}},
-                            timeout=30
-                        )
-                        if response.ok:
-                            data = response.json()
-                            st.success(f"Found {data.get('total_questions', 0)} questions")
-                            for item in data.get("answers", []):
-                                st.markdown(f"**Q:** {item['question']}")
-                                st.markdown(f"**A:** {item['answer']}")
-                                st.caption(f"Source: {item['source']}")
-                                st.markdown("---")
-                    except Exception as e:
-                        st.error(str(e))
+                    if response.ok:
+                        data = response.json()
+                        st.success(f"Found {data.get('total_questions', 0)} questions")
+                        for item in data.get("answers", []):
+                            st.markdown(f"**Q:** {item['question']}")
+                            st.markdown(f"**A:** {item['answer']}")
+                            st.caption(f"Source: {item['source']}")
+                            st.divider()
+                except Exception as e:
+                    st.error(str(e))
 
 
 # ============================================================
@@ -950,8 +1788,9 @@ elif page == "Actions":
 # ============================================================
 
 elif page == "History":
-    st.title("Answer Usage History")
+    st.markdown("# Answer Usage History")
     st.caption("Track which answers you used for each application")
+    st.markdown("---")
 
     # Load history
     history_path = TMP_DIR / "answer_usage_history.json"
@@ -976,18 +1815,22 @@ elif page == "History":
     else:
         # Stats
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Total Answers", len(history))
-        c2.metric("From Databank", len([h for h in history if h['source'] == 'databank']))
+        c1.metric("Total", len(history))
+        c2.metric("Databank", len([h for h in history if h['source'] == 'databank']))
         c3.metric("Custom", len([h for h in history if h['source'] != 'databank']))
         c4.metric("Edited", len([h for h in history if h.get('was_edited', False)]))
 
         st.divider()
 
         # Filters
-        with st.expander("Filters", expanded=False):
+        st.subheader("Filters")
+        c1, c2, c3 = st.columns(3)
+        with c1:
             filter_source = st.selectbox("Source", ["All", "Databank", "Custom"], index=0)
-            filter_company = st.text_input("Company contains", "")
-            limit = st.slider("Show last N entries", 10, 100, 50)
+        with c2:
+            filter_company = st.text_input("Company", placeholder="Filter by company...")
+        with c3:
+            limit = st.number_input("Show entries", min_value=5, max_value=100, value=20, step=5)
 
         # Apply filters
         filtered = history
@@ -996,40 +1839,34 @@ elif page == "History":
         if filter_company:
             filtered = [h for h in filtered if filter_company.lower() in h.get('company', '').lower()]
 
-        filtered = filtered[:limit]
+        filtered = filtered[:int(limit)]
 
-        # Show history
-        st.subheader(f"Recent Activity ({len(filtered)} entries)")
+        st.divider()
 
-        for entry in filtered:
-            with st.expander(f"{entry['timestamp'][:10]} • {entry.get('company', 'Unknown')} • {entry['question'][:60]}..."):
-                # Meta info
-                col1, col2, col3 = st.columns(3)
-                col1.caption(f"**Date:** {entry['timestamp'][:19]}")
-                col2.caption(f"**Source:** {entry['source']}")
-                if entry.get('was_edited'):
-                    col3.caption("✏️ **Edited**")
+        # Show history in clean cards
+        st.subheader(f"Recent Activity ({len(filtered)} / {len(history)} entries)")
 
-                # Job info
-                if entry.get('company'):
-                    st.markdown(f"**Company:** {entry['company']}")
-                if entry.get('job_title'):
-                    st.caption(f"Job: {entry['job_title']}")
-                if entry.get('job_url'):
-                    st.markdown(f"[View Job]({entry['job_url']})")
-
-                st.divider()
+        for idx, entry in enumerate(filtered):
+            with st.container():
+                # Header row
+                c1, c2, c3 = st.columns([2, 1, 1])
+                with c1:
+                    st.markdown(f"**{entry.get('company', 'Unknown Company')}**")
+                with c2:
+                    st.caption(entry['timestamp'][:10])
+                with c3:
+                    edited_suffix = " (edited)" if entry.get('was_edited') else ""
+                    st.caption(f"{entry['source']}{edited_suffix}")
 
                 # Question & Answer
-                st.markdown(f"**Question:**")
-                st.markdown(f"> {entry['question']}")
+                st.markdown(f"**Q:** {entry['question']}")
+                st.text_area("Answer", entry['answer'], height=80, disabled=True, label_visibility="collapsed", key=f"ans_{idx}")
 
-                st.markdown(f"**Answer:**")
-                st.text_area("", entry['answer'], height=100, disabled=True, label_visibility="collapsed", key=f"ans_{entry['timestamp']}")
+                # Job link if available
+                if entry.get('job_url'):
+                    st.link_button("View Job", entry['job_url'], use_container_width=False)
 
-                # Outcome (optional - for future use)
-                if entry.get('outcome'):
-                    st.info(f"Outcome: {entry['outcome']}")
+                st.divider()
 
         # Export
         if st.button("Export History as JSON", use_container_width=True):
