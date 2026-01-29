@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "JobRadar - Application Assistant",
+  "name": "JobRadar Assistant",
   "version": "2.0.0",
   "description": "Automatically extracts questions from job applications and provides answers. Works standalone, no setup required! You review and copy answers manually.",
   "author": "JobRadar",

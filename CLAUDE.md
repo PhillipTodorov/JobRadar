@@ -23,6 +23,30 @@ You're working inside the **WAT framework** (Workflows, Agents, Tools). This arc
 
 **Why this matters:** When AI tries to handle every step directly, accuracy drops fast. If each step is 90% accurate, you're down to 59% success after just five steps. By offloading execution to deterministic scripts, you stay focused on orchestration and decision-making where you excel.
 
+## Technology Direction: JavaScript First
+
+**CRITICAL:** All new features and refactors must be written in JavaScript, not Python.
+
+**Why:**
+- More user-friendly (no Python installation required)
+- Better integration with Chrome extension
+- Single language ecosystem
+- Easier distribution and packaging
+- Path toward Electron desktop app
+
+**What this means:**
+- Existing Python code remains functional but is frozen - maintain only, don't extend
+- Any new backend features → Node.js/Express
+- Any new tools/utilities → JavaScript
+- New dashboard features → JavaScript frameworks (React, Next.js, or vanilla JS)
+- Refactors of existing functionality → Port to JavaScript
+
+**Exception:**
+- Only fix critical bugs in existing Python code
+- Do not add new features to Python codebase
+
+**Goal:** Gradually migrate to 100% JavaScript codebase for maximum user accessibility.
+
 ## How to Operate
 
 **1. Look for existing tools first**

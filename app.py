@@ -846,6 +846,63 @@ def save_qa_databank(databank):
         yaml.dump(databank, f, default_flow_style=False, allow_unicode=True)
 
 
+def load_env_keys():
+    """Load API keys from .env file."""
+    env_path = PROJECT_ROOT / ".env"
+    keys = {"ANTHROPIC_API_KEY": "", "SERPAPI_KEY": ""}
+
+    if env_path.exists():
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    if "=" in line:
+                        key, value = line.split("=", 1)
+                        key = key.strip()
+                        value = value.strip()
+                        if key in keys:
+                            keys[key] = value
+    return keys
+
+
+def save_env_keys(anthropic_key, serpapi_key):
+    """Save API keys to .env file."""
+    env_path = PROJECT_ROOT / ".env"
+
+    # Read template if exists, otherwise use basic structure
+    template_path = PROJECT_ROOT / ".env.template"
+    if template_path.exists():
+        with open(template_path, "r", encoding="utf-8") as f:
+            template_lines = f.readlines()
+    else:
+        template_lines = [
+            "# JobRadar Configuration\n",
+            "\n",
+            "# SerpAPI - For job scraping\n",
+            "SERPAPI_KEY=your-serpapi-key-here\n",
+            "\n",
+            "# Anthropic Claude API\n",
+            "ANTHROPIC_API_KEY=your-anthropic-key-here\n"
+        ]
+
+    # Replace keys in template
+    output_lines = []
+    for line in template_lines:
+        if line.strip().startswith("SERPAPI_KEY="):
+            output_lines.append(f"SERPAPI_KEY={serpapi_key}\n")
+        elif line.strip().startswith("ANTHROPIC_API_KEY="):
+            output_lines.append(f"ANTHROPIC_API_KEY={anthropic_key}\n")
+        else:
+            output_lines.append(line)
+
+    # Write to .env
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(output_lines)
+
+    # Reload environment variables
+    load_dotenv(override=True)
+
+
 def load_company_reports():
     """Load saved company reports."""
     if REPORTS_PATH.exists():
@@ -861,6 +918,27 @@ def save_company_report(company_name, report):
     TMP_DIR.mkdir(exist_ok=True)
     with open(REPORTS_PATH, "w", encoding="utf-8") as f:
         json.dump(reports, f, indent=2, ensure_ascii=False)
+
+
+def load_cv_text():
+    """Load saved CV text from disk."""
+    cv_cache_path = TMP_DIR / "cv_text.json"
+    if cv_cache_path.exists():
+        try:
+            with open(cv_cache_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("text", ""), data.get("filename", "")
+        except:
+            return "", ""
+    return "", ""
+
+
+def save_cv_text(cv_text, filename=""):
+    """Save CV text to disk for persistence across page refreshes."""
+    TMP_DIR.mkdir(exist_ok=True)
+    cv_cache_path = TMP_DIR / "cv_text.json"
+    with open(cv_cache_path, "w", encoding="utf-8") as f:
+        json.dump({"text": cv_text, "filename": filename}, f, ensure_ascii=False, indent=2)
 
 
 def run_tool(script_name):
@@ -968,11 +1046,58 @@ st.sidebar.caption("v1.0.0 • Built with Claude Code")
 # PAGE 1: JOBS (Main View)
 # ============================================================
 
+@st.dialog("⚠️ API Keys Required", width="large")
+def show_api_key_warning(missing_keys):
+    """Show API key warning in a modal dialog."""
+    st.markdown(f"""
+    **Missing API keys:** {', '.join(missing_keys)}
+
+    To use job scraping and scoring features, you need to configure your API keys:
+
+    1. Go to **Settings** → **API Keys** tab
+    2. Add your API keys:
+       - **SerpAPI** for job scraping → [Get free key](https://serpapi.com/) (100 searches/month)
+       - **Anthropic Claude** for company research → [Get free key](https://console.anthropic.com/)
+    3. Restart the app
+    """)
+
+    st.divider()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("📝 Go to Settings", type="primary", use_container_width=True):
+            st.session_state.current_page = "Settings"
+            st.session_state.navigate_to_api_keys = True  # Show indicator to click API Keys tab
+            st.session_state.api_warning_dismissed = True
+            st.rerun()
+    with col2:
+        if st.button("Later", use_container_width=True):
+            st.session_state.api_warning_dismissed = True
+            st.rerun()
+
+
 if page == "Jobs":
     # Page header
     st.markdown("# Job Dashboard")
     st.caption("Browse and filter scraped jobs by fit score")
     st.markdown("---")
+
+    # Check if API keys are configured
+    serpapi_key = os.getenv("SERPAPI_KEY")
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+
+    missing_keys = []
+    if not serpapi_key or serpapi_key == "your-serpapi-key-here":
+        missing_keys.append("SerpAPI")
+    if not anthropic_key or anthropic_key == "your-anthropic-key-here":
+        missing_keys.append("Anthropic")
+
+    # Show modal if keys are missing and not dismissed
+    if 'api_warning_dismissed' not in st.session_state:
+        st.session_state.api_warning_dismissed = False
+
+    if missing_keys and not st.session_state.api_warning_dismissed:
+        show_api_key_warning(missing_keys)
 
     jobs = load_jobs()
 
@@ -1133,10 +1258,25 @@ elif page == "Settings":
     search_params = config.get("search_params", {})
     personal = databank.get("personal_info", {})
 
-    # Use tabs for different setting sections
-    tab1, tab2, tab3, tab4 = st.tabs(["Profile", "Job Search", "Q&A Bank", "Advanced"])
+    # Check if user came from API warning modal
+    if 'navigate_to_api_keys' not in st.session_state:
+        st.session_state.navigate_to_api_keys = False
 
-    with tab1:
+    # Reorder tabs to show API Keys first if coming from modal
+    if st.session_state.navigate_to_api_keys:
+        tab_order = ["API Keys", "Profile", "Job Search", "Q&A Bank"]
+        st.session_state.navigate_to_api_keys = False  # Reset after first render
+    else:
+        tab_order = ["Profile", "Job Search", "Q&A Bank", "API Keys"]
+
+    # Create tabs with appropriate order
+    tabs = st.tabs(tab_order)
+
+    # Map tab names to their objects for easier reference
+    tab_dict = {name: tab for name, tab in zip(tab_order, tabs)}
+
+    # Profile Tab
+    with tab_dict["Profile"]:
         # Personal Info
         st.subheader("Personal Information")
         c1, c2 = st.columns(2)
@@ -1160,6 +1300,41 @@ elif page == "Settings":
         }
         if new_personal != databank.get("personal_info", {}):
             databank["personal_info"] = new_personal
+            save_qa_databank(databank)
+
+        st.divider()
+
+        # Work Authorization
+        st.subheader("Work Authorization")
+        work_auth = databank.get("work_authorization", {})
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            new_uk = st.selectbox(
+                "Eligible to work in UK?",
+                ["Yes", "No", ""],
+                index=["Yes", "No", ""].index(work_auth.get("eligible_to_work_uk", "")),
+                key="wa_uk"
+            )
+        with c2:
+            new_sponsor = st.selectbox(
+                "Require sponsorship?",
+                ["Yes", "No", ""],
+                index=["Yes", "No", ""].index(work_auth.get("require_sponsorship", "")),
+                key="wa_sp"
+            )
+        with c3:
+            new_notice = st.text_input("Notice Period", value=work_auth.get("notice_period", ""), key="wa_np")
+
+        # Auto-save work auth
+        new_work_auth = {
+            "eligible_to_work_uk": new_uk,
+            "require_sponsorship": new_sponsor,
+            "notice_period": new_notice,
+            "availability": work_auth.get("availability", "")
+        }
+        if new_work_auth != work_auth:
+            databank["work_authorization"] = new_work_auth
             save_qa_databank(databank)
 
         st.divider()
@@ -1213,7 +1388,7 @@ elif page == "Settings":
             save_profile(new_profile)
             profile = new_profile
 
-    with tab2:
+    with tab_dict["Job Search"]:
         # Search Configuration
         st.subheader("Search Configuration")
         c1, c2 = st.columns(2)
@@ -1266,7 +1441,7 @@ elif page == "Settings":
             profile["profile"]["dealbreakers"] = new_dealbreakers
             save_profile(profile)
 
-    with tab3:
+    with tab_dict["Q&A Bank"]:
         # Q&A Bank
         st.subheader("Q&A Bank")
         st.caption("Saved answers for the Chrome extension")
@@ -1304,41 +1479,73 @@ elif page == "Settings":
                     save_qa_databank(databank)
                     st.rerun()
 
-    with tab4:
-        # Work Authorization
-        st.subheader("Work Authorization")
-        work_auth = databank.get("work_authorization", {})
+    with tab_dict["API Keys"]:
+        # API Keys Section
+        st.subheader("API Keys")
+        st.caption("Configure API keys for advanced features • Changes save automatically")
 
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            new_uk = st.selectbox(
-                "Eligible to work in UK?",
-                ["Yes", "No", ""],
-                index=["Yes", "No", ""].index(work_auth.get("eligible_to_work_uk", "")),
-                key="wa_uk"
-            )
-        with c2:
-            new_sponsor = st.selectbox(
-                "Require sponsorship?",
-                ["Yes", "No", ""],
-                index=["Yes", "No", ""].index(work_auth.get("require_sponsorship", "")),
-                key="wa_sp"
-            )
-        with c3:
-            new_notice = st.text_input("Notice Period", value=work_auth.get("notice_period", ""), key="wa_np")
+        # Load current keys
+        current_keys = load_env_keys()
 
-        # Auto-save work auth
-        new_work_auth = {
-            "eligible_to_work_uk": new_uk,
-            "require_sponsorship": new_sponsor,
-            "notice_period": new_notice,
-            "availability": work_auth.get("availability", "")
-        }
-        if new_work_auth != work_auth:
-            databank["work_authorization"] = new_work_auth
-            save_qa_databank(databank)
+        # Anthropic API Key
+        st.markdown("**Anthropic Claude API**")
+        st.caption("Required for CV parsing and company research • [Get your key](https://console.anthropic.com/)")
 
-    st.caption("All changes are saved automatically")
+        anthropic_key = st.text_input(
+            "Anthropic API Key",
+            value=current_keys.get("ANTHROPIC_API_KEY", ""),
+            type="password",
+            placeholder="sk-ant-...",
+            key="anthropic_key",
+            label_visibility="collapsed"
+        )
+
+        # Show current status
+        if anthropic_key and anthropic_key != "your-anthropic-key-here" and len(anthropic_key) > 10:
+            st.success("✓ Anthropic API key configured")
+        elif os.getenv("ANTHROPIC_API_KEY"):
+            st.info("Using API key from environment")
+        else:
+            st.warning("⚠ No Anthropic API key configured - CV parsing and research features disabled")
+
+        st.divider()
+
+        # SerpAPI Key
+        st.markdown("**SerpAPI**")
+        st.caption("Required for job scraping • [Get your key](https://serpapi.com/) (100 free searches/month)")
+
+        serpapi_key = st.text_input(
+            "SerpAPI Key",
+            value=current_keys.get("SERPAPI_KEY", ""),
+            type="password",
+            placeholder="your-serpapi-key...",
+            key="serpapi_key",
+            label_visibility="collapsed"
+        )
+
+        # Show current status
+        if serpapi_key and serpapi_key != "your-serpapi-key-here" and len(serpapi_key) > 10:
+            st.success("✓ SerpAPI key configured")
+        elif os.getenv("SERPAPI_KEY"):
+            st.info("Using API key from environment")
+        else:
+            st.warning("⚠ No SerpAPI key configured - Job scraping features disabled")
+
+        st.divider()
+
+        # Auto-save API keys if changed
+        if (anthropic_key != current_keys.get("ANTHROPIC_API_KEY", "") or
+            serpapi_key != current_keys.get("SERPAPI_KEY", "")):
+            try:
+                save_env_keys(anthropic_key, serpapi_key)
+                st.success("✅ API keys saved automatically!")
+                st.info("Restart the app to use new keys (close this window and run start_jobradar.bat again)")
+            except Exception as e:
+                st.error(f"Error saving keys: {e}")
+        else:
+            st.caption("Keys are stored in .env file")
+
+    st.caption("Settings are saved automatically")
 
 
 # ============================================================
@@ -1350,125 +1557,208 @@ elif page == "CV":
     st.caption("Upload your CV to automatically extract information")
     st.markdown("---")
 
-    # File uploader
-    uploaded_file = st.file_uploader(
-        "Upload your CV/Resume (.docx, .pdf, or .txt)",
-        type=["docx", "doc", "pdf", "txt"],
-        help="Upload your CV and we'll extract key information to populate your profile"
+    # Input method selection
+    input_method = st.radio(
+        "Choose input method:",
+        ["Upload File", "Paste Text Manually"],
+        horizontal=True
     )
 
-    if uploaded_file:
-        # Save uploaded file
-        cv_dir = PROJECT_ROOT / "profile"
-        cv_dir.mkdir(exist_ok=True)
-        cv_path = cv_dir / uploaded_file.name
+    # Initialize session state for CV persistence
+    if 'cv_text' not in st.session_state:
+        # Load from disk if available
+        saved_text, saved_filename = load_cv_text()
+        st.session_state['cv_text'] = saved_text
+        st.session_state['cv_filename'] = saved_filename
 
-        with open(cv_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
+    if 'cv_filename' not in st.session_state:
+        st.session_state['cv_filename'] = ""
 
-        st.success(f"Uploaded: {uploaded_file.name}")
+    cv_text = st.session_state['cv_text']
 
-        # Extract text from CV
-        try:
-            if uploaded_file.name.endswith(('.docx', '.doc')):
-                from docx import Document
-                doc = Document(cv_path)
-                cv_text = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
-            elif uploaded_file.name.endswith('.txt'):
-                with open(cv_path, 'r', encoding='utf-8') as f:
-                    cv_text = f.read()
-            elif uploaded_file.name.endswith('.pdf'):
-                # Try multiple extraction methods and compare results
-                cv_text = ""
-                extraction_methods = []
+    if input_method == "Upload File":
+        # File uploader
+        uploaded_file = st.file_uploader(
+            "Upload your CV/Resume (.docx or .txt)",
+            type=["docx", "doc", "txt"],
+            help="Upload your CV and we'll extract key information to populate your profile"
+        )
 
-                # Method 1: pdfplumber (default)
-                try:
-                    import pdfplumber
-                    pdfplumber_text = ""
-                    with pdfplumber.open(cv_path) as pdf:
-                        num_pages = len(pdf.pages)
-                        st.info(f"📄 PDF has {num_pages} page(s)")
-                        for i, page in enumerate(pdf.pages, 1):
-                            text = page.extract_text()
-                            if text:
-                                pdfplumber_text += text + "\n\n"
-                                st.caption(f"pdfplumber page {i}: {len(text)} chars")
-                    pdfplumber_text = pdfplumber_text.strip()
-                    extraction_methods.append(("pdfplumber", pdfplumber_text))
-                except Exception as e:
-                    st.warning(f"pdfplumber extraction failed: {e}")
+        if uploaded_file:
+            # Save uploaded file to disk (auto-save)
+            cv_dir = PROJECT_ROOT / "profile"
+            cv_dir.mkdir(exist_ok=True)
+            cv_path = cv_dir / uploaded_file.name
 
-                # Method 2: pypdf (fallback)
-                try:
-                    from pypdf import PdfReader
-                    reader = PdfReader(cv_path)
-                    pypdf_text = ""
-                    num_pages = len(reader.pages)
-                    for i, page in enumerate(reader.pages, 1):
-                        text = page.extract_text()
-                        pypdf_text += text + "\n\n"
-                        st.caption(f"pypdf page {i}: {len(text)} chars")
-                    pypdf_text = pypdf_text.strip()
-                    extraction_methods.append(("pypdf", pypdf_text))
-                except Exception as e:
-                    st.warning(f"pypdf extraction failed: {e}")
+            try:
+                with open(cv_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
 
-                # Compare and show results
-                if extraction_methods:
-                    if len(extraction_methods) > 1:
-                        st.markdown("**Extraction Comparison:**")
-                        for method_name, text in extraction_methods:
-                            st.write(f"- {method_name}: {len(text)} chars")
+                st.success(f"✅ Saved to disk: {uploaded_file.name}")
+                st.caption(f"📁 Location: {cv_path}")
 
-                    # Use whichever method extracted the most text
-                    method_name, cv_text = max(extraction_methods, key=lambda x: len(x[1]))
-                    st.success(f"✅ Using {method_name} (extracted {len(cv_text)} chars)")
-            else:
+                # Extract text from CV
+                if uploaded_file.name.endswith(('.docx', '.doc')):
+                    from docx import Document
+                    doc = Document(cv_path)
+                    cv_text = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
+                elif uploaded_file.name.endswith('.txt'):
+                    with open(cv_path, 'r', encoding='utf-8') as f:
+                        cv_text = f.read()
+                else:
+                    cv_text = ""
+
+                # Store in session state and disk for persistence
+                st.session_state['cv_text'] = cv_text
+                st.session_state['cv_filename'] = uploaded_file.name
+                save_cv_text(cv_text, uploaded_file.name)
+
+            except Exception as e:
+                st.error(f"❌ Failed to save/read CV: {e}")
+                import traceback
+                st.code(traceback.format_exc())
                 cv_text = ""
 
-            # Clean up formatting while preserving structure
-            if cv_text:
-                import re
-                # Fix spacing: replace 2+ consecutive spaces with single space
-                cv_text = re.sub(r' {2,}', ' ', cv_text)
-                # Remove excessive blank lines (4+ newlines → 2)
-                cv_text = re.sub(r'\n{4,}', '\n\n', cv_text)
-                cv_text = cv_text.strip()
+        # Show currently loaded CV if exists
+        elif st.session_state['cv_filename']:
+            st.info(f"📄 Currently loaded: {st.session_state['cv_filename']}")
+            if st.button("Clear CV and upload new file"):
+                st.session_state['cv_text'] = ""
+                st.session_state['cv_filename'] = ""
+                save_cv_text("", "")  # Clear disk cache
+                st.rerun()
+            cv_text = st.session_state['cv_text']
 
-            if cv_text:
-                # Show preview inline
-                st.markdown("**CV Preview**")
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.caption(f"Extracted {len(cv_text)} characters from CV")
-                with col2:
-                    st.download_button(
-                        label="Download Full Text",
-                        data=cv_text,
-                        file_name="cv_extracted.txt",
-                        mime="text/plain",
-                        use_container_width=True
-                    )
-                with st.container(height=400):
-                    st.text(cv_text)
+    else:
+        # Manual paste option
+        st.markdown("**Paste your CV text below:**")
+        pasted_text = st.text_area(
+            "CV Text",
+            height=300,
+            placeholder="Paste your CV text here (Ctrl+A to select all, Ctrl+C to copy, Ctrl+V to paste)...",
+            label_visibility="collapsed",
+            value=st.session_state['cv_text']  # Restore previous text
+        )
+        if pasted_text.strip():
+            cv_text = pasted_text.strip()
+            st.session_state['cv_text'] = cv_text
+            st.session_state['cv_filename'] = "pasted_text"
+            save_cv_text(cv_text, "pasted_text")  # Save to disk
+            st.success(f"✅ {len(cv_text)} characters loaded")
+
+    # Clean up formatting while preserving structure (runs for both uploaded and pasted)
+    if cv_text:
+        import re
+
+        # Normalize whitespace
+        cv_text = re.sub(r'[^\S\n]+', ' ', cv_text)
+        cv_text = re.sub(r'\n{3,}', '\n\n', cv_text)
+        cv_text = re.sub(r' +\n', '\n', cv_text)
+        cv_text = re.sub(r'\n +', '\n', cv_text)
+        cv_text = cv_text.strip()
+
+        # Update session state and disk with cleaned text
+        st.session_state['cv_text'] = cv_text
+        save_cv_text(cv_text, st.session_state.get('cv_filename', ''))
+
+        # Show preview
+        st.markdown("**CV Preview**")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.caption(f"✅ CV loaded: {len(cv_text)} characters • Persists across tab switches")
+        with col2:
+            st.download_button(
+                label="Download Full Text",
+                data=cv_text,
+                file_name="cv_extracted.txt",
+                mime="text/plain",
+                use_container_width=True
+            )
+        with st.container(height=400):
+            st.text(cv_text)
+
+        st.divider()
+
+        # AI-powered extraction
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+
+        if api_key:
+            st.subheader("Extract Information")
+            st.caption("Use Claude AI to automatically populate your profile from your CV")
+
+            # Initialize session state for persisting results
+            if 'cv_last_parse' not in st.session_state:
+                st.session_state['cv_last_parse'] = None
+
+            # Show previous parse result if exists (persists across tab switches)
+            if st.session_state['cv_last_parse']:
+                result = st.session_state['cv_last_parse']
+
+                st.success(f"✅ Last parse: {result['timestamp']}")
+
+                if result.get('saved_files'):
+                    for file_msg in result['saved_files']:
+                        st.info(file_msg)
+
+                if result.get('updates'):
+                    with st.expander("📋 View saved data", expanded=False):
+                        for update in result['updates']:
+                            st.write(f"• {update}")
+                        st.caption("✓ Data saved - check Settings → Personal Info tab to verify")
+
+                if result.get('errors'):
+                    st.error("⚠ Some save operations failed:")
+                    for err in result['errors']:
+                        st.error(f"• {err}")
+
+                if st.button("Parse Again", type="secondary"):
+                    st.session_state['cv_last_parse'] = None
+                    st.rerun()
 
                 st.divider()
 
-                # AI-powered extraction
-                api_key = os.getenv("ANTHROPIC_API_KEY")
+            # Initialize confirmation state
+            if 'awaiting_parse_confirmation' not in st.session_state:
+                st.session_state['awaiting_parse_confirmation'] = False
 
-                if api_key:
-                    st.subheader("Extract Information")
-                    st.caption("Use Claude AI to automatically populate your profile from your CV")
+            # Show confirmation dialog if awaiting
+            if st.session_state['awaiting_parse_confirmation']:
+                st.warning("⚠️ You've already parsed this CV. Parsing again will use API credits.")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("✓ Yes, Parse Again", type="primary", use_container_width=True):
+                        st.session_state['awaiting_parse_confirmation'] = False
+                        st.session_state['proceed_with_parse'] = True
+                        st.rerun()
+                with col2:
+                    if st.button("✗ Cancel", use_container_width=True):
+                        st.session_state['awaiting_parse_confirmation'] = False
+                        st.info("Parse cancelled. Using existing data.")
+                        st.rerun()
+            else:
+                # Show parse button
+                if st.button("Parse CV with AI", type="primary", use_container_width=True):
+                    # Check if already parsed
+                    if 'cv_last_parse' in st.session_state and st.session_state.get('cv_last_parse'):
+                        # Show confirmation
+                        st.session_state['awaiting_parse_confirmation'] = True
+                        st.session_state['proceed_with_parse'] = False
+                        st.rerun()
+                    else:
+                        # First time - proceed directly
+                        st.session_state['proceed_with_parse'] = True
+                        st.rerun()
 
-                    if st.button("Parse CV with AI", type="primary", use_container_width=True):
-                        with st.spinner("Analyzing CV..."):
-                            try:
-                                import anthropic
-                                client = anthropic.Anthropic(api_key=api_key)
+            # Proceed with parsing if confirmed
+            if st.session_state.get('proceed_with_parse', False):
+                st.session_state['proceed_with_parse'] = False  # Reset flag
+                with st.spinner("Analyzing CV..."):
+                    try:
+                        import anthropic
+                        from datetime import datetime
+                        client = anthropic.Anthropic(api_key=api_key)
 
-                                prompt = f"""Extract structured information from this CV/resume.
+                        prompt = f"""Extract structured information from this CV/resume.
 
 CV Text:
 {cv_text}
@@ -1484,82 +1774,238 @@ Return a JSON object with these fields:
     "skills": ["skill1", "skill2", "skill3", ...],
     "years_experience": "X years",
     "current_role": "Current or most recent job title",
-    "summary": "2-3 sentence professional summary"
+    "summary": "2-3 sentence professional summary",
+    "experience": [
+        {{
+            "company": "Company Name",
+            "role": "Job Title",
+            "dates": "Start Date - End Date or Present",
+            "achievements": ["Achievement 1", "Achievement 2"]
+        }}
+    ],
+    "education": [
+        {{
+            "institution": "University/School Name",
+            "degree": "Degree Name",
+            "field": "Field of Study",
+            "dates": "Start Year - End Year",
+            "grade": "Grade/GPA if mentioned"
+        }}
+    ]
 }}
 
+Extract ALL work experience entries (not just the most recent) and education entries.
 Only include fields that are present in the CV. Return valid JSON only."""
 
-                                message = client.messages.create(
-                                    model="claude-3-5-haiku-20241022",
-                                    max_tokens=1500,
-                                    messages=[{"role": "user", "content": prompt}]
-                                )
+                        # Calculate dynamic max_tokens based on CV length
+                        # Longer CVs need more tokens for comprehensive extraction
+                        cv_length = len(cv_text)
+                        base_tokens = cv_length // 4  # Rough estimate: 1 token per 4 chars
+                        max_tokens = max(2000, min(base_tokens, 8000))  # Between 2000-8000
 
-                                response_text = message.content[0].text.strip()
+                        st.caption(f"📊 CV length: {cv_length:,} chars → Using {max_tokens:,} max tokens for response")
 
-                                # Clean markdown code blocks if present
-                                if response_text.startswith("```"):
-                                    import re
-                                    response_text = re.sub(r'^```\w*\n?', '', response_text)
-                                    response_text = re.sub(r'\n?```$', '', response_text)
+                        message = client.messages.create(
+                            model="claude-3-haiku-20240307",
+                            max_tokens=max_tokens,
+                            messages=[{"role": "user", "content": prompt}]
+                        )
 
-                                extracted = json.loads(response_text)
+                        response_text = message.content[0].text.strip()
 
-                                # Show extracted data
-                                st.success("CV parsed successfully!")
-                                st.json(extracted)
+                        # Clean markdown code blocks if present
+                        if response_text.startswith("```"):
+                            import re
+                            response_text = re.sub(r'^```\w*\n?', '', response_text)
+                            response_text = re.sub(r'\n?```$', '', response_text)
 
-                                st.divider()
+                        extracted = json.loads(response_text)
 
-                                # Apply to profile
-                                if st.button("Apply to Profile", type="primary"):
-                                    # Update qa_databank with personal info
-                                    databank = load_qa_databank()
-                                    personal = databank.get("personal_info", {})
+                        st.success("✅ CV PARSED SUCCESSFULLY!")
 
-                                    if extracted.get("name"):
-                                        personal["full_name"] = extracted["name"]
-                                    if extracted.get("email"):
-                                        personal["email"] = extracted["email"]
-                                    if extracted.get("phone"):
-                                        personal["phone"] = extracted["phone"]
-                                    if extracted.get("location"):
-                                        city_country = extracted["location"].split(",")
-                                        if len(city_country) >= 1:
-                                            personal["city"] = city_country[0].strip()
-                                        if len(city_country) >= 2:
-                                            personal["country"] = city_country[1].strip()
-                                    if extracted.get("linkedin"):
-                                        personal["linkedin"] = extracted["linkedin"]
-                                    if extracted.get("github"):
-                                        personal["github"] = extracted["github"]
+                        # Display extracted information in a formatted way
+                        with st.expander("📄 Extracted CV Data", expanded=True):
+                            col1, col2 = st.columns(2)
 
-                                    databank["personal_info"] = personal
-                                    save_qa_databank(databank)
+                            with col1:
+                                st.subheader("Personal Info")
+                                if extracted.get("name"):
+                                    st.write(f"**Name:** {extracted['name']}")
+                                if extracted.get("email"):
+                                    st.write(f"**Email:** {extracted['email']}")
+                                if extracted.get("phone"):
+                                    st.write(f"**Phone:** {extracted['phone']}")
+                                if extracted.get("location"):
+                                    st.write(f"**Location:** {extracted['location']}")
+                                if extracted.get("linkedin"):
+                                    st.write(f"**LinkedIn:** {extracted['linkedin']}")
+                                if extracted.get("github"):
+                                    st.write(f"**GitHub:** {extracted['github']}")
 
-                                    # Update profile with skills
-                                    profile = load_profile()
-                                    if extracted.get("skills"):
-                                        profile["profile"]["skills"]["required"] = extracted["skills"][:10]  # Top 10 skills
-                                    save_profile(profile)
+                            with col2:
+                                st.subheader("Summary")
+                                if extracted.get("current_role"):
+                                    st.write(f"**Current Role:** {extracted['current_role']}")
+                                if extracted.get("years_experience"):
+                                    st.write(f"**Experience:** {extracted['years_experience']}")
+                                if extracted.get("summary"):
+                                    st.write(f"**Summary:** {extracted['summary']}")
 
-                                    st.success("Profile updated! Check the Settings page.")
-                                    st.balloons()
+                            # Skills section
+                            if extracted.get("skills"):
+                                st.subheader("Skills")
+                                st.write(", ".join(extracted["skills"]))
 
+                            # Experience section
+                            if extracted.get("experience"):
+                                st.subheader("Work Experience")
+                                for i, exp in enumerate(extracted["experience"], 1):
+                                    with st.container():
+                                        st.markdown(f"**{i}. {exp.get('role', 'N/A')}** at {exp.get('company', 'N/A')}")
+                                        st.caption(f"📅 {exp.get('dates', 'N/A')}")
+                                        if exp.get("achievements"):
+                                            for achievement in exp["achievements"]:
+                                                st.write(f"  • {achievement}")
+                                        st.divider()
+
+                            # Education section
+                            if extracted.get("education"):
+                                st.subheader("Education")
+                                for i, edu in enumerate(extracted["education"], 1):
+                                    st.markdown(f"**{i}. {edu.get('degree', 'N/A')}** {('in ' + edu.get('field')) if edu.get('field') else ''}")
+                                    st.write(f"   {edu.get('institution', 'N/A')}")
+                                    if edu.get("dates"):
+                                        st.caption(f"📅 {edu['dates']}")
+                                    if edu.get("grade"):
+                                        st.caption(f"🎓 Grade: {edu['grade']}")
+                                    st.divider()
+
+                        # Create placeholders for save status
+                        status_placeholder = st.empty()
+                        details_placeholder = st.empty()
+
+                        # Auto-save to profile immediately
+                        updates_made = []
+                        save_errors = []
+
+                        try:
+                            status_placeholder.info("💾 Saving to files...")
+
+                            # Load and update databank
+                            databank = load_qa_databank()
+                            personal = databank.get("personal_info", {})
+
+                            if extracted.get("name"):
+                                personal["full_name"] = extracted["name"]
+                                updates_made.append(f"Name: {extracted['name']}")
+                            if extracted.get("email"):
+                                personal["email"] = extracted["email"]
+                                updates_made.append(f"Email: {extracted['email']}")
+                            if extracted.get("phone"):
+                                personal["phone"] = extracted["phone"]
+                                updates_made.append(f"Phone: {extracted['phone']}")
+                            if extracted.get("location"):
+                                city_country = extracted["location"].split(",")
+                                if len(city_country) >= 1:
+                                    personal["city"] = city_country[0].strip()
+                                    updates_made.append(f"City: {city_country[0].strip()}")
+                                if len(city_country) >= 2:
+                                    personal["country"] = city_country[1].strip()
+                                    updates_made.append(f"Country: {city_country[1].strip()}")
+                            if extracted.get("linkedin"):
+                                personal["linkedin"] = extracted["linkedin"]
+                                updates_made.append("LinkedIn profile")
+                            if extracted.get("github"):
+                                personal["github"] = extracted["github"]
+                                updates_made.append("GitHub profile")
+
+                            databank["personal_info"] = personal
+
+                            # SAVE TO FILE
+                            try:
+                                save_qa_databank(databank)
+                                st.success(f"✅ SAVED PERSONAL INFO → {QA_DATABANK_PATH}")
                             except Exception as e:
-                                st.error(f"Failed to parse CV: {e}")
-                                st.info("You can manually update your profile in the Settings page.")
+                                save_errors.append(f"qa_databank.yaml: {e}")
+                                st.error(f"❌ FAILED TO SAVE PERSONAL INFO: {e}")
 
-                else:
-                    st.warning("AI parsing requires ANTHROPIC_API_KEY in .env file")
-                    st.info("You can still manually update your profile in the Settings page")
+                            # Update profile with skills, experience, and education
+                            profile = load_profile()
+                            profile_updated = False
 
-        except Exception as e:
-            st.error(f"Failed to read CV: {e}")
+                            if extracted.get("skills"):
+                                skills_to_save = extracted["skills"][:10]
+                                profile["profile"]["skills"]["required"] = skills_to_save
+                                updates_made.append(f"Skills: {', '.join(skills_to_save)}")
+                                profile_updated = True
 
-    else:
-        # No file uploaded - show instructions
-        st.info("Upload your CV to get started")
+                            # Save work experience
+                            if extracted.get("experience"):
+                                profile["profile"]["experience"] = extracted["experience"]
+                                exp_count = len(extracted["experience"])
+                                updates_made.append(f"Work Experience: {exp_count} {'entry' if exp_count == 1 else 'entries'}")
+                                profile_updated = True
+
+                            # Save education
+                            if extracted.get("education"):
+                                profile["profile"]["education"] = extracted["education"]
+                                edu_count = len(extracted["education"])
+                                updates_made.append(f"Education: {edu_count} {'entry' if edu_count == 1 else 'entries'}")
+                                profile_updated = True
+
+                            # SAVE TO FILE if anything was updated
+                            if profile_updated:
+                                try:
+                                    save_profile(profile)
+                                    st.success(f"✅ SAVED PROFILE DATA → {PROFILE_PATH}")
+                                except Exception as e:
+                                    save_errors.append(f"user_profile.yaml: {e}")
+                                    st.error(f"❌ FAILED TO SAVE PROFILE: {e}")
+
+                            status_placeholder.empty()
+
+                            # Store results in session state for persistence
+                            saved_files = []
+                            saved_files.append(f"💾 Personal info → {QA_DATABANK_PATH.name}")
+                            if profile_updated:
+                                saved_files.append(f"💾 Profile (skills, experience, education) → {PROFILE_PATH.name}")
+
+                            st.session_state['cv_last_parse'] = {
+                                'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                'updates': updates_made,
+                                'errors': save_errors,
+                                'saved_files': saved_files
+                            }
+
+                            # Show final results
+                            if not save_errors:
+                                st.success("✅ ALL DATA SAVED SUCCESSFULLY!")
+                                with details_placeholder.container():
+                                    with st.expander("📋 View saved data", expanded=True):
+                                        for update in updates_made:
+                                            st.write(f"• {update}")
+                                        st.caption("Go to Settings → Personal Info to verify")
+                                st.balloons()
+                            else:
+                                st.error(f"❌ {len(save_errors)} SAVE ERROR(S) OCCURRED")
+                                for err in save_errors:
+                                    st.error(f"• {err}")
+
+                        except Exception as save_error:
+                            st.error(f"❌ SAVE ERROR: {save_error}")
+                            st.error(f"Error type: {type(save_error).__name__}")
+                            import traceback
+                            st.code(traceback.format_exc())
+
+                    except Exception as e:
+                        st.error(f"❌ PARSE ERROR: {e}")
+                        st.error(f"Error type: {type(e).__name__}")
+                        import traceback
+                        st.code(traceback.format_exc())
+
+        else:
+            st.warning("⚠ AI parsing requires ANTHROPIC_API_KEY")
+            st.info("Add your API key in Settings → Advanced tab")
 
         st.markdown("""
 ### What gets extracted:
