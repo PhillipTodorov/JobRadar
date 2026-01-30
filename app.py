@@ -28,12 +28,74 @@ QA_DATABANK_PATH = PROJECT_ROOT / "qa_databank.yaml"
 REPORTS_PATH = TMP_DIR / "company_reports.json"
 TOOLS_DIR = PROJECT_ROOT / "tools"
 
+# Session state persistence functions
+def load_session_state():
+    """Load saved session state from disk."""
+    session_path = TMP_DIR / "session_state.json"
+    if session_path.exists():
+        try:
+            with open(session_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+
+def save_session_state(state_dict=None):
+    """Save session state to disk for persistence across page refreshes."""
+    if state_dict is None:
+        state_dict = st.session_state
+
+    TMP_DIR.mkdir(exist_ok=True)
+    session_path = TMP_DIR / "session_state.json"
+
+    # Widget key patterns to exclude (these cannot be set programmatically)
+    # Includes: navigation buttons, form buttons, file uploaders, and any button keys
+    widget_key_patterns = [
+        'nav_', 'btn_', 'FormSubmitter:', 'FileUploader:',
+        'add_', 'edit_', 'delete_', 'save_', 'cancel_', 'submit_',
+        'upload_', 'download_', 'import_', 'export_', 'parse_', 'extract_'
+    ]
+
+    # Only save serializable state (exclude streamlit objects and widget keys)
+    serializable_state = {}
+    for key, value in state_dict.items():
+        # Skip widget keys
+        if any(key.startswith(pattern) for pattern in widget_key_patterns):
+            continue
+
+        # Skip keys that end with common widget suffixes
+        if any(key.endswith(suffix) for suffix in ['_button', '_btn', '_widget']):
+            continue
+
+        try:
+            json.dumps(value)  # Test if serializable
+            serializable_state[key] = value
+        except (TypeError, ValueError):
+            pass  # Skip non-serializable values
+
+    with open(session_path, "w", encoding="utf-8") as f:
+        json.dump(serializable_state, f, ensure_ascii=False, indent=2)
+
+
 # Page config
 st.set_page_config(
     page_title="JobRadar | Smart Job Search Automation",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Initialize session state from disk (load saved state on first run)
+if 'initialized' not in st.session_state:
+    saved_state = load_session_state()
+    for key, value in saved_state.items():
+        if key not in st.session_state:
+            try:
+                st.session_state[key] = value
+            except Exception:
+                # Skip widget keys that cannot be set programmatically (like button keys)
+                pass
+    st.session_state['initialized'] = True
 
 # Load Google Fonts, Font Awesome, and Material Icons
 st.markdown("""
@@ -941,6 +1003,29 @@ def save_cv_text(cv_text, filename=""):
         json.dump({"text": cv_text, "filename": filename}, f, ensure_ascii=False, indent=2)
 
 
+def load_cv_extracted():
+    """Load saved extracted CV data from disk."""
+    cv_extracted_path = TMP_DIR / "cv_extracted.json"
+    if cv_extracted_path.exists():
+        try:
+            with open(cv_extracted_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return None
+    return None
+
+
+def save_cv_extracted(extracted_data, timestamp):
+    """Save extracted CV data to disk for persistence across page refreshes."""
+    TMP_DIR.mkdir(exist_ok=True)
+    cv_extracted_path = TMP_DIR / "cv_extracted.json"
+    with open(cv_extracted_path, "w", encoding="utf-8") as f:
+        json.dump({
+            "extracted": extracted_data,
+            "timestamp": timestamp
+        }, f, ensure_ascii=False, indent=2)
+
+
 def run_tool(script_name):
     """Run a Python script from the tools directory."""
     script_path = TOOLS_DIR / script_name
@@ -1688,23 +1773,87 @@ elif page == "CV":
 
             # Initialize session state for persisting results
             if 'cv_last_parse' not in st.session_state:
-                st.session_state['cv_last_parse'] = None
+                # Try to load from disk
+                saved_data = load_cv_extracted()
+                if saved_data:
+                    st.session_state['cv_last_parse'] = {
+                        'timestamp': saved_data.get('timestamp'),
+                        'extracted': saved_data.get('extracted'),
+                        'errors': [],
+                        'saved_files': []
+                    }
+                else:
+                    st.session_state['cv_last_parse'] = None
 
             # Show previous parse result if exists (persists across tab switches)
             if st.session_state['cv_last_parse']:
                 result = st.session_state['cv_last_parse']
 
                 st.success(f"✅ Last parse: {result['timestamp']}")
+                st.caption("✓ All data saved to qa_databank.yaml and user_profile.yaml")
 
-                if result.get('saved_files'):
-                    for file_msg in result['saved_files']:
-                        st.info(file_msg)
+                # Display the full extracted data (same as shown during parsing)
+                if result.get('extracted'):
+                    extracted = result['extracted']
+                    with st.expander("📄 Extracted CV Data", expanded=True):
+                        col1, col2 = st.columns(2)
 
-                if result.get('updates'):
-                    with st.expander("📋 View saved data", expanded=False):
-                        for update in result['updates']:
-                            st.write(f"• {update}")
-                        st.caption("✓ Data saved - check Settings → Personal Info tab to verify")
+                        with col1:
+                            st.subheader("Personal Info")
+                            if extracted.get("name"):
+                                st.write(f"**Name:** {extracted['name']}")
+                            if extracted.get("email"):
+                                st.write(f"**Email:** {extracted['email']}")
+                            if extracted.get("phone"):
+                                st.write(f"**Phone:** {extracted['phone']}")
+                            if extracted.get("location"):
+                                st.write(f"**Location:** {extracted['location']}")
+                            if extracted.get("linkedin"):
+                                st.write(f"**LinkedIn:** {extracted['linkedin']}")
+                            if extracted.get("github"):
+                                st.write(f"**GitHub:** {extracted['github']}")
+
+                        with col2:
+                            st.subheader("Summary")
+                            if extracted.get("current_role"):
+                                st.write(f"**Current Role:** {extracted['current_role']}")
+                            if extracted.get("years_experience"):
+                                st.write(f"**Experience:** {extracted['years_experience']}")
+                            if extracted.get("summary"):
+                                st.write(f"**Summary:** {extracted['summary']}")
+
+                        # Skills section
+                        if extracted.get("skills"):
+                            st.subheader("Skills")
+                            st.write(", ".join(extracted["skills"]))
+
+                        # Experience section
+                        if extracted.get("experience"):
+                            st.subheader("Work Experience")
+                            for i, exp in enumerate(extracted["experience"], 1):
+                                with st.container():
+                                    st.markdown(f"**{i}. {exp.get('role', 'N/A')}** at {exp.get('company', 'N/A')}")
+                                    if exp.get('dates'):
+                                        st.caption(f"📅 {exp['dates']}")
+                                    if exp.get("achievements"):
+                                        for achievement in exp["achievements"]:
+                                            st.write(f"  • {achievement}")
+                                    st.divider()
+
+                        # Education section
+                        if extracted.get("education"):
+                            st.subheader("Education")
+                            for i, edu in enumerate(extracted["education"], 1):
+                                degree_text = edu.get('degree', 'N/A')
+                                if edu.get('field'):
+                                    degree_text += f" in {edu['field']}"
+                                st.markdown(f"**{i}. {degree_text}**")
+                                st.write(f"   {edu.get('institution', 'N/A')}")
+                                if edu.get("dates"):
+                                    st.caption(f"📅 {edu['dates']}")
+                                if edu.get("grade"):
+                                    st.caption(f"🎓 Grade: {edu['grade']}")
+                                st.divider()
 
                 if result.get('errors'):
                     st.error("⚠ Some save operations failed:")
@@ -1713,6 +1862,7 @@ elif page == "CV":
 
                 if st.button("Parse Again", type="secondary"):
                     st.session_state['cv_last_parse'] = None
+                    st.session_state['proceed_with_parse'] = True
                     st.rerun()
 
                 st.divider()
@@ -1758,7 +1908,7 @@ elif page == "CV":
                         from datetime import datetime
                         client = anthropic.Anthropic(api_key=api_key)
 
-                        prompt = f"""Extract structured information from this CV/resume.
+                        prompt = f"""Extract structured information from this CV/resume. BE EXTREMELY ACCURATE - do not invent or assume any information.
 
 CV Text:
 {cv_text}
@@ -1786,16 +1936,29 @@ Return a JSON object with these fields:
     "education": [
         {{
             "institution": "University/School Name",
-            "degree": "Degree Name",
-            "field": "Field of Study",
-            "dates": "Start Year - End Year",
-            "grade": "Grade/GPA if mentioned"
+            "degree": "Type of qualification (e.g., 'BSc', 'A-Levels', 'Masters')",
+            "field": "Subject area (e.g., 'Computer Science', 'Mathematics') - omit if already in degree name",
+            "dates": "Start Year - End Year (ONLY if explicitly stated in CV)",
+            "grade": "Final grade/result (e.g., '2:1', 'First Class', '3.8 GPA', or individual grades like 'Maths (A*), Physics (B)')"
         }}
     ]
 }}
 
-Extract ALL work experience entries (not just the most recent) and education entries.
-Only include fields that are present in the CV. Return valid JSON only."""
+CRITICAL RULES FOR EDUCATION:
+1. Create SEPARATE entries for each qualification (university degree separate from A-Levels/high school)
+2. NEVER mix grades from different qualifications (e.g., don't put A-Level grades with a university degree)
+3. For "BSc in Computer Science & Mathematics":
+   - degree: "BSc"
+   - field: "Computer Science & Mathematics"
+   - grade: The actual university grade (e.g., "2:1", "First")
+4. For "A-Levels in Maths (A*), Further Maths (A*), Physics (B)":
+   - degree: "A-Levels"
+   - field: null or omit
+   - grade: "Maths (A*), Further Maths (A*), Physics (B)"
+5. NEVER duplicate field in degree (wrong: "BSc Computer Science" with field "Computer Science")
+6. NEVER invent dates - only include if explicitly in CV
+7. Extract ALL education entries as separate objects
+8. Return valid JSON only, no additional text"""
 
                         # Calculate dynamic max_tokens based on CV length
                         # Longer CVs need more tokens for comprehensive extraction
@@ -1862,7 +2025,8 @@ Only include fields that are present in the CV. Return valid JSON only."""
                                 for i, exp in enumerate(extracted["experience"], 1):
                                     with st.container():
                                         st.markdown(f"**{i}. {exp.get('role', 'N/A')}** at {exp.get('company', 'N/A')}")
-                                        st.caption(f"📅 {exp.get('dates', 'N/A')}")
+                                        if exp.get('dates'):
+                                            st.caption(f"📅 {exp['dates']}")
                                         if exp.get("achievements"):
                                             for achievement in exp["achievements"]:
                                                 st.write(f"  • {achievement}")
@@ -1872,7 +2036,10 @@ Only include fields that are present in the CV. Return valid JSON only."""
                             if extracted.get("education"):
                                 st.subheader("Education")
                                 for i, edu in enumerate(extracted["education"], 1):
-                                    st.markdown(f"**{i}. {edu.get('degree', 'N/A')}** {('in ' + edu.get('field')) if edu.get('field') else ''}")
+                                    degree_text = edu.get('degree', 'N/A')
+                                    if edu.get('field'):
+                                        degree_text += f" in {edu['field']}"
+                                    st.markdown(f"**{i}. {degree_text}**")
                                     st.write(f"   {edu.get('institution', 'N/A')}")
                                     if edu.get("dates"):
                                         st.caption(f"📅 {edu['dates']}")
@@ -1933,6 +2100,25 @@ Only include fields that are present in the CV. Return valid JSON only."""
                             profile = load_profile()
                             profile_updated = False
 
+                            # Save current role
+                            if extracted.get("current_role"):
+                                profile["profile"]["current_role"] = extracted["current_role"]
+                                updates_made.append(f"Current Role: {extracted['current_role']}")
+                                profile_updated = True
+
+                            # Save years of experience
+                            if extracted.get("years_experience"):
+                                profile["profile"]["years_experience"] = extracted["years_experience"]
+                                updates_made.append(f"Years of Experience: {extracted['years_experience']}")
+                                profile_updated = True
+
+                            # Save professional summary
+                            if extracted.get("summary"):
+                                profile["profile"]["summary"] = extracted["summary"]
+                                summary_preview = extracted["summary"][:100] + "..." if len(extracted["summary"]) > 100 else extracted["summary"]
+                                updates_made.append(f"Summary: {summary_preview}")
+                                profile_updated = True
+
                             if extracted.get("skills"):
                                 skills_to_save = extracted["skills"][:10]
                                 profile["profile"]["skills"]["required"] = skills_to_save
@@ -1944,6 +2130,13 @@ Only include fields that are present in the CV. Return valid JSON only."""
                                 profile["profile"]["experience"] = extracted["experience"]
                                 exp_count = len(extracted["experience"])
                                 updates_made.append(f"Work Experience: {exp_count} {'entry' if exp_count == 1 else 'entries'}")
+                                # Add individual experience entries
+                                for i, exp in enumerate(extracted["experience"][:3], 1):  # Show first 3
+                                    role = exp.get('role', 'N/A')
+                                    company = exp.get('company', 'N/A')
+                                    updates_made.append(f"  └─ {i}. {role} at {company}")
+                                if len(extracted["experience"]) > 3:
+                                    updates_made.append(f"  └─ ... and {len(extracted['experience']) - 3} more")
                                 profile_updated = True
 
                             # Save education
@@ -1951,6 +2144,13 @@ Only include fields that are present in the CV. Return valid JSON only."""
                                 profile["profile"]["education"] = extracted["education"]
                                 edu_count = len(extracted["education"])
                                 updates_made.append(f"Education: {edu_count} {'entry' if edu_count == 1 else 'entries'}")
+                                # Add individual education entries
+                                for i, edu in enumerate(extracted["education"][:3], 1):  # Show first 3
+                                    degree = edu.get('degree', 'N/A')
+                                    institution = edu.get('institution', 'N/A')
+                                    updates_made.append(f"  └─ {i}. {degree} at {institution}")
+                                if len(extracted["education"]) > 3:
+                                    updates_made.append(f"  └─ ... and {len(extracted['education']) - 3} more")
                                 profile_updated = True
 
                             # SAVE TO FILE if anything was updated
@@ -1970,21 +2170,84 @@ Only include fields that are present in the CV. Return valid JSON only."""
                             if profile_updated:
                                 saved_files.append(f"💾 Profile (skills, experience, education) → {PROFILE_PATH.name}")
 
+                            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
                             st.session_state['cv_last_parse'] = {
-                                'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                'updates': updates_made,
+                                'timestamp': timestamp,
+                                'extracted': extracted,  # Store full extracted data
                                 'errors': save_errors,
                                 'saved_files': saved_files
                             }
 
+                            # Save extracted data to disk for persistence across page refreshes
+                            save_cv_extracted(extracted, timestamp)
+
                             # Show final results
                             if not save_errors:
                                 st.success("✅ ALL DATA SAVED SUCCESSFULLY!")
-                                with details_placeholder.container():
-                                    with st.expander("📋 View saved data", expanded=True):
-                                        for update in updates_made:
-                                            st.write(f"• {update}")
-                                        st.caption("Go to Settings → Personal Info to verify")
+                                st.caption("✓ Data saved to qa_databank.yaml and user_profile.yaml")
+
+                                # Display the full extracted data again after save
+                                with st.expander("📄 Saved CV Data - Click to view", expanded=True):
+                                    col1, col2 = st.columns(2)
+
+                                    with col1:
+                                        st.subheader("Personal Info")
+                                        if extracted.get("name"):
+                                            st.write(f"**Name:** {extracted['name']}")
+                                        if extracted.get("email"):
+                                            st.write(f"**Email:** {extracted['email']}")
+                                        if extracted.get("phone"):
+                                            st.write(f"**Phone:** {extracted['phone']}")
+                                        if extracted.get("location"):
+                                            st.write(f"**Location:** {extracted['location']}")
+                                        if extracted.get("linkedin"):
+                                            st.write(f"**LinkedIn:** {extracted['linkedin']}")
+                                        if extracted.get("github"):
+                                            st.write(f"**GitHub:** {extracted['github']}")
+
+                                    with col2:
+                                        st.subheader("Summary")
+                                        if extracted.get("current_role"):
+                                            st.write(f"**Current Role:** {extracted['current_role']}")
+                                        if extracted.get("years_experience"):
+                                            st.write(f"**Experience:** {extracted['years_experience']}")
+                                        if extracted.get("summary"):
+                                            st.write(f"**Summary:** {extracted['summary']}")
+
+                                    # Skills section
+                                    if extracted.get("skills"):
+                                        st.subheader("Skills")
+                                        st.write(", ".join(extracted["skills"]))
+
+                                    # Experience section
+                                    if extracted.get("experience"):
+                                        st.subheader("Work Experience")
+                                        for i, exp in enumerate(extracted["experience"], 1):
+                                            with st.container():
+                                                st.markdown(f"**{i}. {exp.get('role', 'N/A')}** at {exp.get('company', 'N/A')}")
+                                                if exp.get('dates'):
+                                                    st.caption(f"📅 {exp['dates']}")
+                                                if exp.get("achievements"):
+                                                    for achievement in exp["achievements"]:
+                                                        st.write(f"  • {achievement}")
+                                                st.divider()
+
+                                    # Education section
+                                    if extracted.get("education"):
+                                        st.subheader("Education")
+                                        for i, edu in enumerate(extracted["education"], 1):
+                                            degree_text = edu.get('degree', 'N/A')
+                                            if edu.get('field'):
+                                                degree_text += f" in {edu['field']}"
+                                            st.markdown(f"**{i}. {degree_text}**")
+                                            st.write(f"   {edu.get('institution', 'N/A')}")
+                                            if edu.get("dates"):
+                                                st.caption(f"📅 {edu['dates']}")
+                                            if edu.get("grade"):
+                                                st.caption(f"🎓 Grade: {edu['grade']}")
+                                            st.divider()
+
                                 st.balloons()
                             else:
                                 st.error(f"❌ {len(save_errors)} SAVE ERROR(S) OCCURRED")
@@ -2380,3 +2643,7 @@ elif page == "History":
                 file_name=f"answer_history_{datetime.datetime.now().strftime('%Y%m%d')}.json",
                 mime="application/json"
             )
+
+# Auto-save session state at the end of each script run
+# This ensures all user changes persist across page refreshes
+save_session_state()
