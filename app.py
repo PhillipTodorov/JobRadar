@@ -1674,6 +1674,12 @@ elif page == "Settings":
                 }
 
                 save_profile(profile)
+
+                # Clear manual form widget state so they refresh with new values
+                for key in ['s_req', 's_pref', 's_locs', 's_min', 's_pref_sal']:
+                    if key in st.session_state:
+                        del st.session_state[key]
+
                 st.success("✅ Profile configuration applied!")
                 st.balloons()
                 time.sleep(1)
@@ -1889,6 +1895,11 @@ elif page == "Settings":
                 # Update dealbreakers
                 profile["profile"]["dealbreakers"] = list(set(selected_dealbreakers))
                 save_profile(profile)
+
+                # Clear manual form widget state so they refresh with new values
+                for key in ['q_titles', 'q_loc', 'q_days', 'deal']:
+                    if key in st.session_state:
+                        del st.session_state[key]
 
                 st.success("✅ Configuration applied! Scroll down to see your settings.")
                 st.balloons()
