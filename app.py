@@ -1474,6 +1474,153 @@ elif page == "Settings":
             profile = new_profile
 
     with tab_dict["Job Search"]:
+        # Job Search Setup Wizard
+        with st.expander("🧙 **Job Search Setup Wizard**", expanded=False):
+            st.caption("Get personalized job search suggestions based on your skills")
+
+            # Job title suggestions based on skills
+            SKILL_TO_JOBS = {
+                "software": ["Junior Software Engineer", "Graduate Developer", "Junior Full Stack Developer", "Software Developer (Entry Level)"],
+                "programming": ["Junior Software Engineer", "Graduate Developer", "Junior Full Stack Developer"],
+                "python": ["Junior Python Developer", "Python Developer (Entry Level)", "Backend Developer (Junior)"],
+                "javascript": ["Junior Frontend Developer", "Junior Full Stack Developer", "Web Developer (Entry Level)"],
+                "frontend": ["Junior Frontend Developer", "Frontend Developer (Entry Level)", "UI Developer (Junior)"],
+                "backend": ["Junior Backend Developer", "Backend Developer (Entry Level)", "API Developer (Junior)"],
+                "data": ["Junior Data Analyst", "Data Analyst", "Junior Data Scientist", "Business Intelligence Analyst"],
+                "analytics": ["Junior Data Analyst", "Business Analyst", "Analytics Analyst"],
+                "administration": ["Administrative Assistant", "Office Coordinator", "Executive Assistant (Entry Level)"],
+                "support": ["IT Support Technician", "Technical Support Engineer", "Help Desk Analyst", "Customer Support Engineer"],
+                "testing": ["Junior QA Engineer", "Software Tester", "Test Analyst", "QA Analyst"],
+                "devops": ["Junior DevOps Engineer", "DevOps Engineer (Entry Level)", "Infrastructure Engineer (Junior)"],
+                "technology": ["IT Support Technician", "Technical Support Specialist", "Junior Systems Administrator"],
+            }
+
+            DEALBREAKER_TEMPLATES = {
+                "Unpaid/Low Pay": ["unpaid", "no salary", "volunteer", "commission only", "pay to work"],
+                "Contract Type": ["zero hours", "self-employed", "1099", "freelance only"],
+                "Suspicious": ["MLM", "multi-level marketing", "pyramid", "training fee required"],
+                "Work Conditions": ["must have own vehicle", "door to door", "cold calling only"],
+            }
+
+            # Analyze user's skills and suggest jobs
+            user_skills = skills.get("required", []) + skills.get("preferred", [])
+            user_skills_lower = [s.lower() for s in user_skills]
+
+            suggested_jobs = set()
+            for skill_keyword, job_titles in SKILL_TO_JOBS.items():
+                if any(skill_keyword in skill for skill in user_skills_lower):
+                    suggested_jobs.update(job_titles)
+
+            if not suggested_jobs:
+                suggested_jobs = ["Junior Software Engineer", "IT Support Technician", "Administrative Assistant"]
+
+            st.markdown("### 1️⃣ Select Job Titles")
+            st.caption(f"Based on your skills: {', '.join(user_skills[:3])}" + (" ..." if len(user_skills) > 3 else ""))
+
+            # Job title selection
+            selected_jobs = []
+            cols = st.columns(2)
+            for idx, job in enumerate(sorted(suggested_jobs)):
+                with cols[idx % 2]:
+                    if st.checkbox(job, key=f"job_{hash(job)}", value=False):
+                        selected_jobs.append(job)
+
+            # Custom job title
+            custom_job = st.text_input("➕ Add custom job title", key="custom_job", placeholder="e.g., Junior DevOps Engineer")
+            if custom_job:
+                selected_jobs.append(custom_job)
+
+            st.markdown("---")
+
+            # Dealbreakers selection
+            st.markdown("### 2️⃣ Select Dealbreakers")
+            st.caption("Jobs containing these keywords will be automatically rejected")
+
+            selected_dealbreakers = []
+            for category, keywords in DEALBREAKER_TEMPLATES.items():
+                if st.checkbox(f"**{category}**", key=f"deal_cat_{hash(category)}"):
+                    selected_dealbreakers.extend(keywords)
+                    with st.container():
+                        st.caption(f"Excludes: {', '.join(keywords)}")
+
+            # Custom dealbreaker
+            custom_dealbreaker = st.text_input("➕ Add custom dealbreaker", key="custom_deal", placeholder="e.g., specific company name")
+            if custom_dealbreaker:
+                selected_dealbreakers.append(custom_dealbreaker.lower())
+
+            st.markdown("---")
+
+            # Location configuration
+            st.markdown("### 3️⃣ Location Preferences")
+            col1, col2 = st.columns(2)
+            with col1:
+                wizard_location = st.text_input("Primary location", value="London", key="wiz_loc")
+                accept_remote = st.checkbox("Accept remote positions", value=True, key="wiz_remote")
+            with col2:
+                experience_level = st.selectbox(
+                    "Experience level",
+                    ["", "Entry level", "Mid-Senior level", "Director", "Internship"],
+                    key="wiz_exp"
+                )
+                wizard_days = st.selectbox(
+                    "Posted within",
+                    [1, 3, 7, 14, 30],
+                    format_func=lambda x: f"{x} day{'s' if x > 1 else ''}",
+                    index=4,
+                    key="wiz_days"
+                )
+
+            st.markdown("---")
+
+            # Preview
+            st.markdown("### 4️⃣ Preview")
+            if selected_jobs or selected_dealbreakers:
+                preview_col1, preview_col2 = st.columns(2)
+                with preview_col1:
+                    st.markdown("**Job Titles:**")
+                    if selected_jobs:
+                        for job in selected_jobs:
+                            st.markdown(f"✓ {job}")
+                    else:
+                        st.caption("None selected")
+
+                    st.markdown("**Location:**")
+                    st.markdown(f"📍 {wizard_location}")
+                    if accept_remote:
+                        st.markdown("🌐 Remote positions accepted")
+
+                    st.markdown(f"**Recency:** {wizard_days} day{'s' if wizard_days > 1 else ''}")
+                    if experience_level:
+                        st.markdown(f"**Level:** {experience_level}")
+
+                with preview_col2:
+                    st.markdown("**Dealbreakers:**")
+                    if selected_dealbreakers:
+                        for deal in set(selected_dealbreakers):
+                            st.markdown(f"✗ {deal}")
+                    else:
+                        st.caption("None selected")
+
+            # Save button
+            if st.button("💾 Apply Configuration", type="primary", use_container_width=True, key="apply_wizard"):
+                # Update search config
+                config["search_params"]["titles"] = selected_jobs
+                config["search_params"]["location"] = wizard_location
+                config["search_params"]["remote"] = accept_remote
+                config["search_params"]["experience_level"] = experience_level
+                config["search_params"]["posted_within_days"] = wizard_days
+                save_config(config)
+
+                # Update dealbreakers
+                profile["profile"]["dealbreakers"] = list(set(selected_dealbreakers))
+                save_profile(profile)
+
+                st.success("✅ Configuration applied! Scroll down to see your settings.")
+                st.balloons()
+                st.rerun()
+
+        st.markdown("---")
+
         # Search Configuration
         st.subheader("Search Configuration")
         c1, c2 = st.columns(2)
