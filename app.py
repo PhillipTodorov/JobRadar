@@ -1424,6 +1424,263 @@ elif page == "Settings":
 
         st.divider()
 
+        # Profile Setup Wizard
+        with st.expander("🧙 **Profile Setup Wizard**", expanded=False):
+            st.caption("Quick setup for your skills, locations, and salary preferences")
+
+            # Skill categories and suggestions
+            SKILL_CATEGORIES = {
+                "Technical Skills": {
+                    "Programming": ["Python", "JavaScript", "Java", "C++", "C#", "PHP", "Ruby", "Go", "Rust"],
+                    "Web Development": ["HTML/CSS", "React", "Vue.js", "Angular", "Node.js", "Django", "Flask"],
+                    "Data & Analytics": ["SQL", "Excel", "Tableau", "Power BI", "R", "Statistics"],
+                    "Cloud & DevOps": ["AWS", "Azure", "Google Cloud", "Docker", "Kubernetes", "CI/CD"],
+                    "Database": ["MySQL", "PostgreSQL", "MongoDB", "Redis", "Oracle"],
+                },
+                "Professional Skills": {
+                    "Administration": ["Microsoft Office", "Google Workspace", "Scheduling", "Data Entry"],
+                    "Communication": ["Email Management", "Customer Service", "Phone Etiquette", "Written Communication"],
+                    "Project Management": ["Agile", "Scrum", "JIRA", "Asana", "Trello"],
+                    "Design": ["Figma", "Adobe XD", "Photoshop", "UI/UX Design"],
+                },
+                "Soft Skills": [
+                    "Problem Solving", "Team Collaboration", "Time Management", "Attention to Detail",
+                    "Critical Thinking", "Adaptability", "Leadership", "Organization"
+                ]
+            }
+
+            UK_CITIES = [
+                "London", "Manchester", "Birmingham", "Leeds", "Glasgow", "Liverpool",
+                "Bristol", "Edinburgh", "Newcastle", "Cardiff", "Sheffield", "Belfast",
+                "Nottingham", "Southampton", "Leicester", "Cambridge", "Oxford"
+            ]
+
+            # Get current values
+            current_required = skills.get("required", [])
+            current_preferred = skills.get("preferred", [])
+            current_locations = locations.get("preferred", [])
+            current_min_salary = salary.get("minimum", 20000)
+            current_pref_salary = salary.get("preferred", 30000)
+
+            st.markdown("### 1️⃣ Select Your Skills")
+
+            # Required Skills
+            st.markdown("**Required Skills** (must-have)")
+            selected_required = []
+
+            # Technical Skills
+            with st.container():
+                st.caption("Technical Skills")
+                for subcategory, skill_list in SKILL_CATEGORIES["Technical Skills"].items():
+                    with st.expander(f"📁 {subcategory}", expanded=False):
+                        cols = st.columns(3)
+                        for idx, skill in enumerate(skill_list):
+                            with cols[idx % 3]:
+                                is_selected = skill in current_required
+                                if st.checkbox(skill, key=f"req_{hash(skill)}", value=is_selected):
+                                    selected_required.append(skill)
+
+            # Professional Skills
+            with st.container():
+                st.caption("Professional Skills")
+                for subcategory, skill_list in SKILL_CATEGORIES["Professional Skills"].items():
+                    with st.expander(f"📁 {subcategory}", expanded=False):
+                        cols = st.columns(3)
+                        for idx, skill in enumerate(skill_list):
+                            with cols[idx % 3]:
+                                is_selected = skill in current_required
+                                if st.checkbox(skill, key=f"req_{hash(skill)}", value=is_selected):
+                                    selected_required.append(skill)
+
+            # Soft Skills
+            with st.container():
+                st.caption("Soft Skills")
+                cols = st.columns(3)
+                for idx, skill in enumerate(SKILL_CATEGORIES["Soft Skills"]):
+                    with cols[idx % 3]:
+                        is_selected = skill in current_required
+                        if st.checkbox(skill, key=f"req_{hash(skill)}", value=is_selected):
+                            selected_required.append(skill)
+
+            # Custom required skill
+            custom_req = st.text_input("➕ Add custom required skill", key="custom_req", placeholder="e.g., Salesforce")
+            if custom_req:
+                selected_required.append(custom_req)
+
+            # Include any saved required skills not in templates
+            for saved_skill in current_required:
+                if saved_skill not in selected_required:
+                    selected_required.append(saved_skill)
+
+            st.markdown("---")
+
+            # Preferred Skills
+            st.markdown("**Preferred Skills** (nice-to-have)")
+            selected_preferred = []
+
+            pref_cols = st.columns(3)
+
+            # Flatten all skills for preferred selection
+            all_skills = []
+            for category_data in SKILL_CATEGORIES.values():
+                if isinstance(category_data, dict):
+                    for skill_list in category_data.values():
+                        all_skills.extend(skill_list)
+                else:
+                    all_skills.extend(category_data)
+
+            # Show only top 15 most common skills for preferred
+            common_skills = ["Communication", "Time Management", "Microsoft Office", "Problem Solving",
+                           "Customer Service", "Team Collaboration", "Attention to Detail", "Excel",
+                           "Data Entry", "Email Management", "Organization", "Written Communication",
+                           "Google Workspace", "Scheduling", "Adaptability"]
+
+            for idx, skill in enumerate(common_skills):
+                with pref_cols[idx % 3]:
+                    is_selected = skill in current_preferred
+                    if st.checkbox(skill, key=f"pref_{hash(skill)}", value=is_selected):
+                        selected_preferred.append(skill)
+
+            # Custom preferred skill
+            custom_pref = st.text_input("➕ Add custom preferred skill", key="custom_pref", placeholder="e.g., Spanish fluency")
+            if custom_pref:
+                selected_preferred.append(custom_pref)
+
+            # Include any saved preferred skills not in templates
+            for saved_skill in current_preferred:
+                if saved_skill not in selected_preferred:
+                    selected_preferred.append(saved_skill)
+
+            st.markdown("---")
+
+            # Location Preferences
+            st.markdown("### 2️⃣ Location Preferences")
+            selected_locations = []
+
+            st.caption("Select cities you're willing to work in")
+            loc_cols = st.columns(4)
+            for idx, city in enumerate(UK_CITIES):
+                with loc_cols[idx % 4]:
+                    is_selected = city in current_locations
+                    if st.checkbox(city, key=f"loc_{hash(city)}", value=is_selected):
+                        selected_locations.append(city)
+
+            # Custom location
+            custom_loc = st.text_input("➕ Add custom location", key="custom_loc", placeholder="e.g., Remote, Europe")
+            if custom_loc:
+                selected_locations.append(custom_loc)
+
+            # Include any saved locations not in templates
+            for saved_loc in current_locations:
+                if saved_loc not in selected_locations:
+                    selected_locations.append(saved_loc)
+
+            st.markdown("---")
+
+            # Salary Preferences
+            st.markdown("### 3️⃣ Salary Expectations")
+            col1, col2 = st.columns(2)
+
+            with col1:
+                wizard_min_salary = st.number_input(
+                    "Minimum acceptable salary (£/year)",
+                    min_value=15000,
+                    max_value=200000,
+                    value=current_min_salary,
+                    step=1000,
+                    key="wiz_min_sal"
+                )
+
+            with col2:
+                wizard_pref_salary = st.number_input(
+                    "Preferred salary (£/year)",
+                    min_value=15000,
+                    max_value=200000,
+                    value=current_pref_salary,
+                    step=1000,
+                    key="wiz_pref_sal"
+                )
+
+            # Quick presets
+            st.caption("Quick presets:")
+            preset_cols = st.columns(5)
+            presets = [
+                ("Entry Level", 20000, 30000),
+                ("Junior", 25000, 35000),
+                ("Mid-Level", 35000, 50000),
+                ("Senior", 50000, 70000),
+                ("Lead", 70000, 100000),
+            ]
+
+            for idx, (label, min_sal, pref_sal) in enumerate(presets):
+                with preset_cols[idx]:
+                    if st.button(label, key=f"preset_{label}", use_container_width=True):
+                        wizard_min_salary = min_sal
+                        wizard_pref_salary = pref_sal
+                        st.rerun()
+
+            st.markdown("---")
+
+            # Preview
+            st.markdown("### 4️⃣ Preview")
+            preview_col1, preview_col2, preview_col3 = st.columns(3)
+
+            with preview_col1:
+                st.markdown("**Required Skills:**")
+                if selected_required:
+                    for skill in selected_required[:10]:
+                        st.markdown(f"✓ {skill}")
+                    if len(selected_required) > 10:
+                        st.caption(f"+ {len(selected_required) - 10} more")
+                else:
+                    st.caption("None selected")
+
+            with preview_col2:
+                st.markdown("**Preferred Skills:**")
+                if selected_preferred:
+                    for skill in selected_preferred[:10]:
+                        st.markdown(f"✓ {skill}")
+                    if len(selected_preferred) > 10:
+                        st.caption(f"+ {len(selected_preferred) - 10} more")
+                else:
+                    st.caption("None selected")
+
+            with preview_col3:
+                st.markdown("**Locations:**")
+                if selected_locations:
+                    for loc in selected_locations[:10]:
+                        st.markdown(f"📍 {loc}")
+                    if len(selected_locations) > 10:
+                        st.caption(f"+ {len(selected_locations) - 10} more")
+                else:
+                    st.caption("None selected")
+
+                st.markdown(f"**Salary:** £{wizard_min_salary:,} - £{wizard_pref_salary:,}")
+
+            # Apply button
+            if st.button("💾 Apply Profile Configuration", type="primary", use_container_width=True, key="apply_profile_wizard"):
+                # Update profile
+                profile["profile"]["skills"] = {
+                    "required": selected_required,
+                    "preferred": selected_preferred,
+                }
+                profile["profile"]["locations"] = {
+                    "preferred": selected_locations,
+                    "acceptable": locations.get("acceptable", []),
+                }
+                profile["profile"]["salary"] = {
+                    "minimum": int(wizard_min_salary),
+                    "preferred": int(wizard_pref_salary),
+                }
+
+                save_profile(profile)
+                st.success("✅ Profile configuration applied!")
+                st.balloons()
+                time.sleep(1)
+                st.rerun()
+
+        st.divider()
+
         # Job Preferences
         st.subheader("Job Preferences")
         c1, c2 = st.columns(2)
