@@ -53,7 +53,7 @@ def save_session_state(state_dict=None):
     # Includes: navigation buttons, form buttons, file uploaders, and any button keys
     widget_key_patterns = [
         'nav_', 'btn_', 'FormSubmitter:', 'FileUploader:',
-        'add_', 'edit_', 'delete_', 'save_', 'cancel_', 'submit_', 'apply_',
+        'add_', 'edit_', 'delete_', 'save_', 'cancel_', 'submit_', 'apply_', 'preset_',
         'upload_', 'download_', 'import_', 'export_', 'parse_', 'extract_'
     ]
 
