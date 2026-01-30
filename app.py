@@ -1517,12 +1517,15 @@ elif page == "Settings":
             st.markdown("### 1️⃣ Select Job Titles")
             st.caption(f"Based on your skills: {', '.join(user_skills[:3])}" + (" ..." if len(user_skills) > 3 else ""))
 
-            # Job title selection
+            # Job title selection (pre-check based on saved config)
+            current_titles = search_params.get("titles", [])
             selected_jobs = []
             cols = st.columns(2)
             for idx, job in enumerate(sorted(suggested_jobs)):
                 with cols[idx % 2]:
-                    if st.checkbox(job, key=f"job_{hash(job)}", value=False):
+                    # Pre-check if job is already in saved config
+                    is_selected = job in current_titles
+                    if st.checkbox(job, key=f"job_{hash(job)}", value=is_selected):
                         selected_jobs.append(job)
 
             # Custom job title
@@ -1532,13 +1535,16 @@ elif page == "Settings":
 
             st.markdown("---")
 
-            # Dealbreakers selection
+            # Dealbreakers selection (pre-check based on saved config)
             st.markdown("### 2️⃣ Select Dealbreakers")
             st.caption("Jobs containing these keywords will be automatically rejected")
 
+            current_dealbreakers = user.get("dealbreakers", [])
             selected_dealbreakers = []
             for category, keywords in DEALBREAKER_TEMPLATES.items():
-                if st.checkbox(f"**{category}**", key=f"deal_cat_{hash(category)}"):
+                # Pre-check if any keyword from this category is in saved dealbreakers
+                category_active = any(kw in current_dealbreakers for kw in keywords)
+                if st.checkbox(f"**{category}**", key=f"deal_cat_{hash(category)}", value=category_active):
                     selected_dealbreakers.extend(keywords)
                     with st.container():
                         st.caption(f"Excludes: {', '.join(keywords)}")
@@ -1548,25 +1554,37 @@ elif page == "Settings":
             if custom_dealbreaker:
                 selected_dealbreakers.append(custom_dealbreaker.lower())
 
+            # Include any saved dealbreakers not in templates
+            for saved_deal in current_dealbreakers:
+                if saved_deal not in selected_dealbreakers:
+                    selected_dealbreakers.append(saved_deal)
+
             st.markdown("---")
 
-            # Location configuration
+            # Location configuration (pre-fill from saved config)
             st.markdown("### 3️⃣ Location Preferences")
             col1, col2 = st.columns(2)
             with col1:
-                wizard_location = st.text_input("Primary location", value="London", key="wiz_loc")
-                accept_remote = st.checkbox("Accept remote positions", value=True, key="wiz_remote")
+                wizard_location = st.text_input("Primary location", value=search_params.get("location", "London"), key="wiz_loc")
+                accept_remote = st.checkbox("Accept remote positions", value=search_params.get("remote", True), key="wiz_remote")
             with col2:
+                saved_exp = search_params.get("experience_level", "")
+                exp_options = ["", "Entry level", "Mid-Senior level", "Director", "Internship"]
+                exp_index = exp_options.index(saved_exp) if saved_exp in exp_options else 0
                 experience_level = st.selectbox(
                     "Experience level",
-                    ["", "Entry level", "Mid-Senior level", "Director", "Internship"],
+                    exp_options,
+                    index=exp_index,
                     key="wiz_exp"
                 )
+                saved_days = search_params.get("posted_within_days", 30)
+                days_options = [1, 3, 7, 14, 30]
+                days_index = days_options.index(saved_days) if saved_days in days_options else 4
                 wizard_days = st.selectbox(
                     "Posted within",
-                    [1, 3, 7, 14, 30],
+                    days_options,
                     format_func=lambda x: f"{x} day{'s' if x > 1 else ''}",
-                    index=4,
+                    index=days_index,
                     key="wiz_days"
                 )
 
