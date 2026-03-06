@@ -11,3 +11,4 @@ python-docx
 anthropic
 flask
 flask-cors
+pytest

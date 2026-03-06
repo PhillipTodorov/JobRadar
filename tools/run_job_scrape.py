@@ -14,6 +14,7 @@ from scraper_utils import load_config, save_csv, save_raw_results
 SCRAPERS = {
     "linkedin": "scrape_serpapi",
     "google_jobs": "scrape_serpapi",
+    "reed": "scrape_reed",
 }
 
 

@@ -5,11 +5,38 @@ the user's skills, location preferences, and other criteria.
 """
 
 import json
+import re
 from pathlib import Path
 
 import yaml
 
 from scraper_utils import TMP_DIR
+
+# Patterns that extract the number of years required from a job description.
+# Each pattern captures one or two groups; we take the maximum found.
+_YEARS_PATTERNS = [
+    re.compile(r'(\d+)\s*\+\s*years?', re.IGNORECASE),
+    re.compile(r'(\d+)\s*years?[\'s]?\s*(?:\w+\s+){0,2}experience', re.IGNORECASE),
+    re.compile(r'minimum\s+(?:of\s+)?(\d+)\s*years?', re.IGNORECASE),
+    re.compile(r'at\s+least\s+(\d+)\s*years?', re.IGNORECASE),
+    re.compile(r'(\d+)\s*[-\u2013]\s*(\d+)\s*years?', re.IGNORECASE),
+    re.compile(r'(\d+)\s+to\s+(\d+)\s*years?', re.IGNORECASE),
+]
+
+
+
+def extract_years_required(text: str) -> int:
+    """Return the maximum years of experience required found in *text*.
+
+    Returns 0 if no years requirement is detected.
+    """
+    max_years = 0
+    for pattern in _YEARS_PATTERNS:
+        for match in pattern.finditer(text):
+            groups = [int(g) for g in match.groups() if g is not None]
+            if groups:
+                max_years = max(max_years, max(groups))
+    return max_years
 
 PROJECT_ROOT = Path(__file__).parent.parent
 PROFILE_PATH = PROJECT_ROOT / "user_profile.yaml"
@@ -55,6 +82,12 @@ def calculate_fit_score(job, profile):
         if dealbreaker.lower() in text:
             return 0
 
+    # Check experience requirement against user's max acceptable
+    max_years_acceptable = user.get("experience", {}).get("max_years_required", 99)
+    years_required = extract_years_required(text)
+    if years_required > max_years_acceptable:
+        return 0
+
     # Required skills score (0-100)
     required_skills = user.get("skills", {}).get("required", [])
     if required_skills:
@@ -64,10 +97,13 @@ def calculate_fit_score(job, profile):
         scores["required_skills"] = 50  # Neutral if no required skills defined
 
     # Preferred skills score (0-100)
+    # Capped at preferred_skills_cap matches = 100%, so a job doesn't need to mention
+    # every skill to score well — just enough to demonstrate strong overlap.
     preferred_skills = user.get("skills", {}).get("preferred", [])
+    preferred_cap = scoring.get("preferred_skills_cap", 4)
     if preferred_skills:
         preferred_matches = sum(1 for skill in preferred_skills if skill.lower() in text)
-        scores["preferred_skills"] = (preferred_matches / len(preferred_skills)) * 100
+        scores["preferred_skills"] = min(preferred_matches / preferred_cap, 1.0) * 100
     else:
         scores["preferred_skills"] = 50  # Neutral if no preferred skills defined
 
@@ -84,9 +120,17 @@ def calculate_fit_score(job, profile):
         scores["location"] = 0
 
     # Title relevance score (0-100)
+    # Keywords are configured in user_profile.yaml; defaults to neutral (50) if not set.
     job_title = job.get("title", "").lower()
-    relevant_keywords = ["developer", "engineer", "software", "programmer", "coding"]
-    if any(kw in job_title for kw in relevant_keywords):
+    relevant_title_kws = [k.lower() for k in user.get("relevant_title_keywords", [])]
+    irrelevant_title_kws = [k.lower() for k in user.get("irrelevant_title_keywords", [])]
+    senior_prefixes = [p.lower() for p in user.get("senior_title_prefixes", [])]
+
+    if senior_prefixes and any(job_title.startswith(p) for p in senior_prefixes):
+        scores["title_relevance"] = 0
+    elif irrelevant_title_kws and any(kw in job_title for kw in irrelevant_title_kws):
+        scores["title_relevance"] = 0
+    elif relevant_title_kws and any(kw in job_title for kw in relevant_title_kws):
         scores["title_relevance"] = 100
     else:
         scores["title_relevance"] = 50
