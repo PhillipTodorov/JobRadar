@@ -32,6 +32,13 @@ qa_databank.yaml
 job_search_config.yaml
 github_projects.yaml
 
+# Backups
+*.zip
+
+# Screenshots
+*.png
+*.PNG
+
 # Windows artifacts
 nul
 

@@ -15,6 +15,7 @@ SCRAPERS = {
     "linkedin": "scrape_serpapi",
     "google_jobs": "scrape_serpapi",
     "reed": "scrape_reed",
+    "email": "fetch_email_jobs",
 }
 
 

@@ -189,9 +189,19 @@ def load_profile():
             "scoring": {"weights": {}}}
 
 
+def _gist_auto_push():
+    """Silent gist sync after save. Never raises."""
+    try:
+        from tools.gist_sync import auto_push
+        auto_push()
+    except Exception:
+        pass
+
+
 def save_profile(profile_data):
     with open(PROFILE_PATH, "w", encoding="utf-8") as f:
         yaml.dump(profile_data, f, default_flow_style=False, allow_unicode=True)
+    _gist_auto_push()
 
 
 def load_config():
@@ -205,6 +215,7 @@ def load_config():
 def save_config(config_data):
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         yaml.dump(config_data, f, default_flow_style=False, allow_unicode=True)
+    _gist_auto_push()
 
 
 def load_qa_databank():
@@ -217,6 +228,7 @@ def load_qa_databank():
 def save_qa_databank(databank):
     with open(QA_DATABANK_PATH, "w", encoding="utf-8") as f:
         yaml.dump(databank, f, default_flow_style=False, allow_unicode=True)
+    _gist_auto_push()
 
 
 def load_company_reports():
@@ -232,6 +244,7 @@ def save_company_report(company_name, report):
     TMP_DIR.mkdir(exist_ok=True)
     with open(REPORTS_PATH, "w", encoding="utf-8") as f:
         json.dump(reports, f, indent=2, ensure_ascii=False)
+    _gist_auto_push()
 
 
 def run_tool(script_name):
@@ -288,6 +301,7 @@ def save_tracker(entries: list):
     TMP_DIR.mkdir(exist_ok=True)
     with open(TRACKER_PATH, "w", encoding="utf-8") as f:
         json.dump(entries, f, indent=2, ensure_ascii=False)
+    _gist_auto_push()
 
 
 def load_hidden_jobs() -> set:
@@ -301,6 +315,7 @@ def save_hidden_jobs(hidden: set):
     TMP_DIR.mkdir(exist_ok=True)
     with open(HIDDEN_JOBS_PATH, "w", encoding="utf-8") as f:
         json.dump(list(hidden), f, indent=2)
+    _gist_auto_push()
 
 
 def add_to_tracker(job: dict):
@@ -359,6 +374,16 @@ def relative_date(date_str):
 if "page" not in st.session_state:
     st.session_state.page = "Overview"
 
+# Auto-pull from gist on startup (once per session)
+if "gist_synced" not in st.session_state:
+    st.session_state.gist_synced = True
+    try:
+        from tools.gist_sync import auto_pull_if_newer
+        if auto_pull_if_newer():
+            st.rerun()
+    except Exception:
+        pass
+
 _sidebar_loc = load_config().get("search_params", {}).get("location", "London")
 st.sidebar.markdown(
     '<div style="padding:0.5rem 0 0.75rem;">'
@@ -368,7 +393,7 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
-for _p in ["Overview", "Jobs", "Tracker", "Sites", "Screenshots", "Settings"]:
+for _p in ["Overview", "Jobs", "Tracker", "Insights", "Sites", "Screenshots", "Settings"]:
     if st.sidebar.button(_p, key=f"nav_{_p}", use_container_width=True,
                          type="primary" if st.session_state.page == _p else "secondary"):
         st.session_state.page = _p
@@ -787,6 +812,41 @@ elif page == "Jobs":
                             del st.session_state[cl_key]
                             st.rerun()
 
+            # ── ATS Keyword Match ──────────────────────────────────────────
+            with st.expander("ATS Keyword Match", expanded=False):
+                from tools.ats_matcher import match_job as _ats_match
+                _ats = _ats_match(job.get("description", ""), job.get("title", ""))
+                _mpct = _ats["match_pct"]
+                _mc = "#28a745" if _mpct >= 60 else "#ffc107" if _mpct >= 35 else "#dc3545"
+                st.markdown(
+                    f'<span style="font-size:1.6rem;font-weight:700;color:{_mc}">{_mpct}%</span>'
+                    f' &nbsp; keyword match ({len(_ats["matched"])} of {_ats["job_skills_count"]} skills)',
+                    unsafe_allow_html=True,
+                )
+                if _ats["experience_required"]:
+                    st.caption(f"Experience required: {_ats['experience_required']}")
+
+                _ac, _bc = st.columns(2)
+                with _ac:
+                    if _ats["matched"]:
+                        st.markdown("**You have:**")
+                        st.markdown(" ".join(
+                            f'<span style="background:#28a74522;color:#28a745;padding:2px 8px;'
+                            f'border-radius:4px;margin:2px;display:inline-block">{s}</span>'
+                            for s in _ats["matched"]
+                        ), unsafe_allow_html=True)
+                with _bc:
+                    if _ats["missing"]:
+                        st.markdown("**Missing:**")
+                        st.markdown(" ".join(
+                            f'<span style="background:#dc354522;color:#dc3545;padding:2px 8px;'
+                            f'border-radius:4px;margin:2px;display:inline-block">{s}</span>'
+                            for s in _ats["missing"]
+                        ), unsafe_allow_html=True)
+
+                if _ats["missing"]:
+                    st.caption("Tip: Add any of these missing skills to your profile if you have them.")
+
             with st.expander("Job Description", expanded=False):
                 st.write(job.get("description", "No description available."))
 
@@ -1022,6 +1082,174 @@ elif page == "Tracker":
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# INSIGHTS  —  Skills Gap + Application Analytics
+# ─────────────────────────────────────────────────────────────────────────────
+
+elif page == "Insights":
+    st.title("Insights")
+
+    tab_gap, tab_analytics = st.tabs(["Skills Gap", "Analytics"])
+
+    # ── Skills Gap tab ────────────────────────────────────────────────────────
+    with tab_gap:
+        jobs = load_jobs()
+        if not jobs:
+            st.info("No jobs scraped yet. Run a search first to see skills gap analysis.")
+        else:
+            from tools.ats_matcher import skills_gap_analysis, get_user_skills
+
+            gap = skills_gap_analysis(jobs)
+            ranked = gap["ranked"]
+            coverage = gap["top_20_coverage"]
+
+            # Summary stats
+            g1, g2, g3 = st.columns(3)
+            _cov_c = "#28a745" if coverage >= 60 else "#ffc107" if coverage >= 35 else "#dc3545"
+            g1.markdown(stat_card("Top 20 Coverage", f"{coverage}%", _cov_c), unsafe_allow_html=True)
+            g2.markdown(stat_card("Skills Detected", gap["total_skills_found"], "#4f8ef7"), unsafe_allow_html=True)
+            g3.markdown(stat_card("Your Skills", gap["user_skills_count"], "#aaa"), unsafe_allow_html=True)
+
+            st.divider()
+
+            if ranked:
+                # Top 20 most demanded skills — horizontal bar chart
+                st.subheader("Most In-Demand Skills")
+                st.caption("Green = you have it. Red = missing from your profile.")
+
+                top = ranked[:20]
+                for item in top:
+                    pct = item["pct"]
+                    col = "#28a745" if item["have"] else "#dc3545"
+                    icon = "  " if item["have"] else "  "
+                    st.markdown(
+                        f'<div style="display:flex;align-items:center;margin:3px 0">'
+                        f'<div style="width:160px;font-size:0.85rem">{icon}{item["skill"]}</div>'
+                        f'<div style="flex:1;background:#333;border-radius:4px;height:18px;overflow:hidden">'
+                        f'<div style="width:{pct}%;background:{col};height:100%;border-radius:4px"></div>'
+                        f'</div>'
+                        f'<div style="width:50px;text-align:right;font-size:0.8rem;color:#aaa">{pct}%</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                st.divider()
+
+                # Missing high-demand skills
+                missing = [r for r in ranked[:30] if not r["have"]]
+                if missing:
+                    st.subheader("Skills to Consider Adding")
+                    st.caption("These are frequently requested in jobs you're targeting but missing from your profile.")
+                    for item in missing[:15]:
+                        st.markdown(
+                            f'- **{item["skill"]}** — appears in {item["pct"]}% of jobs ({item["count"]} listings)'
+                        )
+                else:
+                    st.success("You cover all top 30 most-demanded skills!")
+
+    # ── Analytics tab ─────────────────────────────────────────────────────────
+    with tab_analytics:
+        tracker = load_tracker()
+        jobs = load_jobs()
+
+        if not tracker:
+            st.info("No tracked applications yet. Start tracking jobs to see analytics.")
+        else:
+            total_tracked = len(tracker)
+            counts = {s: sum(1 for t in tracker if t.get("status") == s) for s in TRACKER_STATUSES}
+
+            applied_count = counts.get("Applied", 0) + counts.get("Interview", 0) + counts.get("Offer", 0) + counts.get("Rejected", 0)
+            interview_count = counts.get("Interview", 0) + counts.get("Offer", 0)
+            offer_count = counts.get("Offer", 0)
+
+            # Conversion funnel
+            st.subheader("Application Funnel")
+            funnel_data = [
+                ("Jobs Found", len(jobs), "#e0e0e0"),
+                ("Tracked", total_tracked, "#4f8ef7"),
+                ("Applied", applied_count, "#aaa"),
+                ("Interview", interview_count, "#ffc107"),
+                ("Offer", offer_count, "#28a745"),
+            ]
+
+            for label, count, colour in funnel_data:
+                max_val = max(len(jobs), 1)
+                width = max(int((count / max_val) * 100), 2) if count > 0 else 0
+                st.markdown(
+                    f'<div style="display:flex;align-items:center;margin:4px 0">'
+                    f'<div style="width:100px;font-size:0.85rem">{label}</div>'
+                    f'<div style="flex:1;background:#333;border-radius:4px;height:24px;overflow:hidden">'
+                    f'<div style="width:{width}%;background:{colour};height:100%;border-radius:4px;'
+                    f'display:flex;align-items:center;padding-left:8px;font-size:0.8rem;color:#fff">'
+                    f'{count}</div></div></div>',
+                    unsafe_allow_html=True,
+                )
+
+            st.divider()
+
+            # Key metrics
+            st.subheader("Key Metrics")
+            m1, m2, m3, m4 = st.columns(4)
+
+            response_rate = round((interview_count / applied_count) * 100) if applied_count > 0 else 0
+            rejection_rate = round((counts.get("Rejected", 0) / applied_count) * 100) if applied_count > 0 else 0
+
+            # Avg fit score of interviews vs non-interviews
+            interview_scores = [t.get("fit_score", 0) for t in tracker if t.get("status") in ("Interview", "Offer")]
+            rejected_scores = [t.get("fit_score", 0) for t in tracker if t.get("status") == "Rejected"]
+            avg_int = round(sum(interview_scores) / len(interview_scores)) if interview_scores else "-"
+            avg_rej = round(sum(rejected_scores) / len(rejected_scores)) if rejected_scores else "-"
+
+            _rr_c = "#28a745" if response_rate >= 20 else "#ffc107" if response_rate >= 5 else "#dc3545"
+            m1.markdown(stat_card("Response Rate", f"{response_rate}%", _rr_c), unsafe_allow_html=True)
+            m2.markdown(stat_card("Applied", applied_count, "#aaa"), unsafe_allow_html=True)
+            m3.markdown(stat_card("Avg Score (Interview)", avg_int, "#ffc107"), unsafe_allow_html=True)
+            m4.markdown(stat_card("Avg Score (Rejected)", avg_rej, "#dc3545"), unsafe_allow_html=True)
+
+            st.divider()
+
+            # Status breakdown
+            st.subheader("Status Breakdown")
+            for status in TRACKER_STATUSES:
+                cnt = counts[status]
+                if cnt > 0:
+                    pct = round((cnt / total_tracked) * 100)
+                    colour = STATUS_COLOURS[status]
+                    st.markdown(
+                        f'<div style="display:flex;align-items:center;margin:3px 0">'
+                        f'<div style="width:100px;font-size:0.85rem">{status}</div>'
+                        f'<div style="flex:1;background:#333;border-radius:4px;height:18px;overflow:hidden">'
+                        f'<div style="width:{pct}%;background:{colour};height:100%;border-radius:4px"></div>'
+                        f'</div>'
+                        f'<div style="width:70px;text-align:right;font-size:0.8rem;color:#aaa">{cnt} ({pct}%)</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            # Fit score insight
+            if applied_count > 0:
+                st.divider()
+                st.subheader("Insight")
+                if interview_scores and rejected_scores:
+                    if avg_int != "-" and avg_rej != "-" and avg_int > avg_rej:
+                        st.markdown(
+                            f"Jobs where you got interviews had an average fit score of **{avg_int}** "
+                            f"vs **{avg_rej}** for rejections. "
+                            f"Focus on jobs scoring **{avg_int - 10}+** for best results."
+                        )
+                    elif avg_int != "-" and avg_rej != "-":
+                        st.markdown(
+                            "Fit scores don't seem to predict interview success yet. "
+                            "Consider tailoring your CV more closely to job descriptions — "
+                            "check the **ATS Keyword Match** on the Jobs page."
+                        )
+                elif not interview_scores and applied_count >= 5:
+                    st.markdown(
+                        f"You've applied to **{applied_count}** jobs with no interviews yet. "
+                        "Try checking the **ATS Keyword Match** on each job to improve your CV alignment."
+                    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # SCREENSHOTS
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1244,8 +1472,8 @@ elif page == "Settings":
     st.title("Settings")
     st.caption("All changes are saved automatically.")
 
-    tab_profile, tab_search, tab_ext = st.tabs(
-        ["Profile", "Search", "Extension"]
+    tab_profile, tab_search, tab_email, tab_ext, tab_data = st.tabs(
+        ["Profile", "Search", "Email Alerts", "Extension", "Data"]
     )
 
     # ── Profile tab ──────────────────────────────────────────────────────────
@@ -1433,6 +1661,161 @@ elif page == "Settings":
                 st.error("Failed")
                 st.code(stdout + stderr)
 
+    # ── Email Alerts tab ─────────────────────────────────────────────────────
+    with tab_email:
+        st.subheader("Email Job Alert Parsing")
+        st.caption(
+            "Connect your email to automatically parse job listings "
+            "from recruiter alert emails (Michael Page, Reed, Indeed, etc.)"
+        )
+
+        _email_addr = os.getenv("EMAIL_ADDRESS", "")
+        _email_pass = os.getenv("EMAIL_APP_PASSWORD", "")
+
+        if _email_addr and _email_pass:
+            st.success(f"Email configured: {_email_addr}")
+
+            if st.button("Test Connection", key="email_test"):
+                with st.spinner("Connecting..."):
+                    try:
+                        sys.path.insert(0, str(TOOLS_DIR))
+                        from tools.fetch_email_jobs import connect_imap
+                        conn = connect_imap()
+                        conn.logout()
+                        st.success("Connection successful!")
+                    except Exception as _e:
+                        st.error(f"Connection failed: {_e}")
+        else:
+            st.warning("Email not configured.")
+            st.markdown("""
+**Setup steps for Yahoo Mail:**
+1. Go to [Yahoo Account Security](https://login.yahoo.com/account/security)
+2. Enable **2-Step Verification** if not already on
+3. Generate an **App Password** (select "Other App")
+4. Add to your `.env` file:
+```
+EMAIL_ADDRESS=your.email@yahoo.co.uk
+EMAIL_APP_PASSWORD=your-app-password
+EMAIL_IMAP_HOST=imap.mail.yahoo.com
+```
+
+**For Gmail:** Use `EMAIL_IMAP_HOST=imap.gmail.com` and a Google App Password.
+
+**For Outlook:** Use `EMAIL_IMAP_HOST=outlook.office365.com`.
+""")
+
+        st.divider()
+
+        # Recruiter senders management
+        _econfig = load_config()
+        _email_cfg = _econfig.get("email_alerts", {})
+        _senders = _email_cfg.get("senders", [])
+
+        st.subheader("Recruiter Senders")
+        st.caption("Emails from these senders will be parsed for job listings.")
+
+        if _senders:
+            for _i, _s in enumerate(_senders):
+                _ec1, _ec2, _ec3, _ec4 = st.columns([2, 3, 2, 1])
+                with _ec1:
+                    st.text(_s.get("name", ""))
+                with _ec2:
+                    st.text(_s.get("email_from", ""))
+                with _ec3:
+                    st.text(_s.get("parser", "generic"))
+                with _ec4:
+                    if st.button("X", key=f"rm_sender_{_i}",
+                                 help="Remove this sender"):
+                        _senders.pop(_i)
+                        _email_cfg["senders"] = _senders
+                        _econfig["email_alerts"] = _email_cfg
+                        save_config(_econfig)
+                        st.rerun()
+        else:
+            st.info("No senders configured. Load defaults or add manually.")
+
+        # Load defaults button
+        if st.button("Load Default Senders", key="load_default_senders"):
+            from tools.fetch_email_jobs import DEFAULT_SENDERS
+            _email_cfg["senders"] = DEFAULT_SENDERS.copy()
+            _email_cfg["enabled"] = True
+            _econfig["email_alerts"] = _email_cfg
+            if "email" not in _econfig.get("sites", []):
+                _econfig.setdefault("sites", []).append("email")
+            save_config(_econfig)
+            st.rerun()
+
+        st.divider()
+
+        # Add new sender
+        st.markdown("**Add a sender**")
+        _ac1, _ac2, _ac3 = st.columns([2, 3, 2])
+        with _ac1:
+            _new_name = st.text_input("Name", placeholder="Michael Page", key="new_sender_name")
+        with _ac2:
+            _new_from = st.text_input("From address", placeholder="noreply@example.com", key="new_sender_from")
+        with _ac3:
+            _new_parser = st.selectbox(
+                "Parser",
+                ["michael_page", "reed", "indeed", "totaljobs", "cv_library", "generic"],
+                key="new_sender_parser",
+            )
+        if st.button("Add Sender", key="add_sender_btn"):
+            if _new_name and _new_from:
+                _senders.append({"name": _new_name, "email_from": _new_from, "parser": _new_parser})
+                _email_cfg["senders"] = _senders
+                _email_cfg["enabled"] = True
+                _econfig["email_alerts"] = _email_cfg
+                if "email" not in _econfig.get("sites", []):
+                    _econfig.setdefault("sites", []).append("email")
+                save_config(_econfig)
+                st.rerun()
+            else:
+                st.warning("Name and email address are required.")
+
+        st.divider()
+
+        # Manual fetch
+        if _email_addr and _email_pass and _senders:
+            _days = st.slider("Check emails from last N days", 1, 30, 7, key="email_days_back")
+            if st.button("Fetch Email Jobs Now", type="primary", use_container_width=True,
+                         key="fetch_email_now"):
+                with st.spinner("Connecting to email and parsing job alerts..."):
+                    try:
+                        sys.path.insert(0, str(TOOLS_DIR))
+                        from tools.fetch_email_jobs import scrape as email_scrape
+                        _ejobs = email_scrape()
+                        if _ejobs:
+                            # Score and merge with existing jobs
+                            try:
+                                from tools.score_job_fit import calculate_fit_score
+                                _profile = load_profile()
+                                for _j in _ejobs:
+                                    _j["fit_score"] = calculate_fit_score(_j, _profile)
+                            except Exception:
+                                pass
+
+                            # Merge with existing scored jobs
+                            _existing = load_jobs()
+                            _existing_urls = {j.get("url", "") for j in _existing}
+                            _new_count = 0
+                            for _j in _ejobs:
+                                if _j.get("url", "") not in _existing_urls:
+                                    _existing.append(_j)
+                                    _new_count += 1
+
+                            if _new_count > 0:
+                                TMP_DIR.mkdir(exist_ok=True)
+                                with open(TMP_DIR / "scored_jobs.json", "w", encoding="utf-8") as _f:
+                                    json.dump(_existing, _f, indent=2, ensure_ascii=False)
+                                _gist_auto_push()
+
+                            st.success(f"Found {len(_ejobs)} jobs from email, {_new_count} new.")
+                        else:
+                            st.info("No jobs found in recent recruiter emails.")
+                    except Exception as _e:
+                        st.error(f"Email fetch failed: {_e}")
+
     # ── Extension tab ────────────────────────────────────────────────────────
     with tab_ext:
         backend_running = check_backend_status()
@@ -1485,3 +1868,104 @@ elif page == "Settings":
                                     st.markdown("---")
                         except Exception as e:
                             st.error(str(e))
+
+    # ── Data tab ──────────────────────────────────────────────────────────────
+    with tab_data:
+        # ── Cloud Sync ──
+        st.subheader("Cloud Sync")
+        st.caption("Sync your profile, jobs, and settings across machines via a private GitHub Gist.")
+
+        try:
+            from tools.gist_sync import get_sync_status, push as gist_push, pull as gist_pull
+
+            _sync = get_sync_status()
+
+            if not _sync["configured"]:
+                st.warning(
+                    "GitHub token not configured. Add `GITHUB_GIST_TOKEN=ghp_xxx` to your `.env` file.\n\n"
+                    "Create a token at [github.com/settings/tokens](https://github.com/settings/tokens) "
+                    "with **gist** scope only."
+                )
+            else:
+                if _sync["gist_id"]:
+                    _sc1, _sc2 = st.columns(2)
+                    with _sc1:
+                        st.markdown(f"**Gist:** `{_sync['gist_id'][:12]}...`")
+                    with _sc2:
+                        if _sync["remote_meta"]:
+                            _rm = _sync["remote_meta"]
+                            _ts = _rm.get("synced_at", "")[:19].replace("T", " ")
+                            _machine = _rm.get("machine", "unknown")
+                            st.markdown(f"**Last sync:** {_ts} UTC from *{_machine}*")
+                        else:
+                            st.markdown("**Last sync:** Unknown")
+                    st.caption(f"Syncing {len(_sync['local_files'])} files. Changes auto-push after every save.")
+                else:
+                    st.info("No gist created yet. Click **Push** to create one.")
+
+                _pc1, _pc2 = st.columns(2)
+                with _pc1:
+                    if st.button("Push to Gist", type="primary", use_container_width=True,
+                                 help="Upload local data to GitHub Gist (overwrites remote)"):
+                        with st.spinner("Pushing..."):
+                            _pr = gist_push()
+                        if _pr["success"]:
+                            st.success(f"Pushed {len(_pr['files_pushed'])} files.")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(f"Push failed: {_pr['error']}")
+                with _pc2:
+                    if st.button("Pull from Gist", use_container_width=True,
+                                 help="Download data from GitHub Gist (overwrites local)"):
+                        with st.spinner("Pulling..."):
+                            _pr = gist_pull()
+                        if _pr["success"]:
+                            st.success(f"Pulled {len(_pr['files_pulled'])} files.")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(f"Pull failed: {_pr['error']}")
+        except ImportError:
+            st.error("gist_sync module not found. Check tools/gist_sync.py exists.")
+        except Exception as _e:
+            st.error(f"Sync error: {_e}")
+
+        st.divider()
+
+        st.subheader("Export")
+        st.caption("Download a backup of all your jobs, profile, and preferences.")
+
+        from tools.backup_restore import export_bytes
+
+        backup_data = export_bytes()
+        timestamp = datetime.now().strftime("%Y-%m-%d")
+        st.download_button(
+            "Download Backup",
+            data=backup_data,
+            file_name=f"jobradar_backup_{timestamp}.zip",
+            mime="application/zip",
+            type="primary",
+            use_container_width=True,
+        )
+
+        st.divider()
+        st.subheader("Import")
+        st.caption("Restore from a previous backup. This will overwrite current data.")
+
+        uploaded = st.file_uploader(
+            "Upload backup file",
+            type=["zip"],
+            key="backup_upload",
+        )
+        if uploaded:
+            if st.button("Restore Backup", type="primary", use_container_width=True):
+                from tools.backup_restore import import_bytes
+
+                ok, result = import_bytes(uploaded.getvalue())
+                if ok:
+                    st.success(f"Restored {len(result)} files. Refreshing...")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error(f"Import failed: {result}")
