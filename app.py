@@ -154,10 +154,11 @@ section[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover {
     padding: 12px 14px;
     margin-bottom: 10px;
 }
-.dh-title { font-size: 1rem; font-weight: 700; color: #e0e0e0; line-height: 1.3; margin-bottom: 6px; }
+.dh-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.dh-title { font-size: 1rem; font-weight: 700; color: #e0e0e0; line-height: 1.3; }
 .dh-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .dh-company { font-size: 0.82rem; color: #aaa; font-weight: 500; }
-.dh-meta { font-size: 0.72rem; color: #555; margin-top: 6px; line-height: 1.6; }
+.dh-meta { font-size: 0.72rem; color: #555; margin-top: 4px; line-height: 1.6; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -369,6 +370,74 @@ def relative_date(date_str):
         return str(date_str)
 
 
+def _render_tracker_entry(entry, tracker, real_idx, status, status_idx):
+    """Render a single tracker entry card with notes and action buttons."""
+    entry_id = entry.get("id")
+    score = entry.get("fit_score", 0)
+    score_col = "#28a745" if score >= 60 else "#ffc107" if score >= 35 else "#6c757d"
+
+    with st.container(border=True):
+        meta_parts = []
+        if entry.get("salary"):
+            meta_parts.append(entry["salary"])
+        if entry.get("date_applied"):
+            meta_parts.append(f"Applied {relative_date(entry['date_applied'])}")
+        elif entry.get("date_added"):
+            meta_parts.append(f"Saved {relative_date(entry['date_added'])}")
+        meta_str = "  ·  ".join(meta_parts)
+
+        st.markdown(
+            f'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px;">'
+            f'<div>'
+            f'<div style="font-size:0.88rem;font-weight:600;color:#e0e0e0">{entry.get("title","?")}</div>'
+            f'<div style="font-size:0.72rem;color:#666;margin-top:2px">{entry.get("company","")}</div>'
+            f'</div>'
+            f'<span style="font-size:1.15rem;font-weight:700;color:{score_col};flex-shrink:0;margin-left:10px">{score}</span>'
+            f'</div>'
+            + (f'<div style="font-size:0.68rem;color:#444;margin-bottom:4px">{meta_str}</div>' if meta_str else ''),
+            unsafe_allow_html=True,
+        )
+
+        new_notes = st.text_area(
+            "Notes", value=entry.get("notes", ""),
+            placeholder="Interview date, contact name…",
+            key=f"notes_{entry_id}",
+            label_visibility="collapsed",
+            height=60,
+        )
+        if new_notes != entry.get("notes", ""):
+            tracker[real_idx]["notes"] = new_notes
+            save_tracker(tracker)
+
+        btn_cols = st.columns(3)
+        with btn_cols[0]:
+            if entry.get("url"):
+                st.link_button("Open", entry["url"], use_container_width=True)
+        with btn_cols[1]:
+            if status_idx < len(TRACKER_STATUSES) - 1:
+                next_status = TRACKER_STATUSES[status_idx + 1]
+                if st.button(f"→ {next_status}", key=f"fwd_{entry_id}", use_container_width=True):
+                    tracker[real_idx]["status"] = next_status
+                    if next_status == "Applied" and not tracker[real_idx].get("date_applied"):
+                        tracker[real_idx]["date_applied"] = datetime.now().strftime("%Y-%m-%d")
+                    save_tracker(tracker)
+                    st.rerun()
+        with btn_cols[2]:
+            if status_idx > 0:
+                prev_status = TRACKER_STATUSES[status_idx - 1]
+                if st.button(f"← {prev_status}", key=f"bck_{entry_id}", use_container_width=True):
+                    tracker[real_idx]["status"] = prev_status
+                    if prev_status == "Saved":
+                        tracker[real_idx]["date_applied"] = ""
+                    save_tracker(tracker)
+                    st.rerun()
+
+        if st.button("Remove", key=f"rm_{entry_id}", type="tertiary"):
+            tracker.pop(real_idx)
+            save_tracker(tracker)
+            st.rerun()
+
+
 # ── Navigation ────────────────────────────────────────────────────────────────
 
 if "page" not in st.session_state:
@@ -421,22 +490,16 @@ if page == "Overview":
     jobs = load_jobs()
     tracker = load_tracker()
 
-    # ── Top stats ──
+    # ── Top stats (3 cards) ──
     total = len(jobs)
-    matched = len([j for j in jobs if j.get("fit_score", 0) > 0])
+    applied = sum(1 for t in tracker if t.get("status") in ("Applied", "Interview", "Offer", "Rejected"))
     top = max((j.get("fit_score", 0) for j in jobs), default=0)
-    applied = sum(1 for t in tracker if t.get("status") == "Applied")
-    interviews = sum(1 for t in tracker if t.get("status") == "Interview")
-    offers = sum(1 for t in tracker if t.get("status") == "Offer")
 
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1, c2, c3 = st.columns(3)
     for col, label, val, colour in [
-        (c1, "Jobs Found",  total,      "#e0e0e0"),
-        (c2, "Matching",    matched,    "#4f8ef7"),
-        (c3, "Top Score",   top,        "#28a745" if top >= 60 else "#ffc107" if top >= 35 else "#6c757d"),
-        (c4, "Applied",     applied,    "#aaa"),
-        (c5, "Interviews",  interviews, "#ffc107"),
-        (c6, "Offers",      offers,     "#28a745"),
+        (c1, "Jobs Found", total, "#e0e0e0"),
+        (c2, "Applied", applied, "#4f8ef7"),
+        (c3, "Top Score", top, "#28a745" if top >= 60 else "#ffc107" if top >= 35 else "#6c757d"),
     ]:
         col.markdown(stat_card(label, val, colour), unsafe_allow_html=True)
 
@@ -447,9 +510,9 @@ if page == "Overview":
     with left:
         st.subheader("Top Jobs")
         if not jobs:
-            st.caption("No jobs yet — run a search in Settings.")
+            st.caption("No jobs yet — run a search below.")
         else:
-            top_jobs = sorted(jobs, key=lambda x: x.get("fit_score", 0), reverse=True)[:8]
+            top_jobs = sorted(jobs, key=lambda x: x.get("fit_score", 0), reverse=True)[:5]
             rows = ""
             for job in top_jobs:
                 score = job.get("fit_score", 0)
@@ -475,7 +538,7 @@ if page == "Overview":
                 tracker,
                 key=lambda x: max(x.get("date_applied") or "", x.get("date_added") or ""),
                 reverse=True,
-            )[:6]
+            )[:4]
             rows = ""
             for t in recent:
                 colour = STATUS_COLOURS.get(t.get("status", "Saved"), "#888")
@@ -495,7 +558,7 @@ if page == "Overview":
 
     st.divider()
 
-    # ── Quick search action ──
+    # ── Quick search ──
     _scored_path = TMP_DIR / "scored_jobs.json"
     _last_str = (
         "Last searched: " + datetime.fromtimestamp(_scored_path.stat().st_mtime).strftime("%d %b %Y %H:%M")
@@ -513,26 +576,22 @@ if page == "Overview":
     else:
         _cfg = load_config()
         _api_cfg = _cfg.get("api", {})
-        _ov_col1, _ov_col2 = st.columns([3, 1])
-        with _ov_col1:
-            _ov_max = st.slider(
-                "Max results", min_value=25, max_value=500, step=25,
-                value=int(_api_cfg.get("max_results", 100)),
-                key="ov_max_results",
-            )
-        with _ov_col2:
-            st.markdown('<div style="height:1.9rem"></div>', unsafe_allow_html=True)
-            if st.button("Search Reed.co.uk", type="primary", use_container_width=True):
-                if _ov_max != _api_cfg.get("max_results"):
-                    _cfg["api"] = {**_api_cfg, "max_results": _ov_max}
-                    save_config(_cfg)
-                with st.spinner("Searching Reed for matching jobs…"):
-                    code, stdout, stderr = run_tool("run_job_scrape.py")
-                if code == 0:
-                    st.success("Done — go to **Jobs** to see results.")
-                else:
-                    st.error("Search failed")
-                    st.code(stdout + stderr)
+        _ov_max = st.slider(
+            "Max results", min_value=25, max_value=500, step=25,
+            value=int(_api_cfg.get("max_results", 100)),
+            key="ov_max_results",
+        )
+        if st.button("Search Reed.co.uk", type="primary", use_container_width=True):
+            if _ov_max != _api_cfg.get("max_results"):
+                _cfg["api"] = {**_api_cfg, "max_results": _ov_max}
+                save_config(_cfg)
+            with st.spinner("Searching Reed for matching jobs…"):
+                code, stdout, stderr = run_tool("run_job_scrape.py")
+            if code == 0:
+                st.success("Done — go to **Jobs** to see results.")
+            else:
+                st.error("Search failed")
+                st.code(stdout + stderr)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -542,41 +601,20 @@ if page == "Overview":
 elif page == "Jobs":
     jobs = load_jobs()
 
-    # Stats row
-    total = len(jobs)
-    matching = len([j for j in jobs if j.get("fit_score", 0) > 0])
-    top_score = max((j.get("fit_score", 0) for j in jobs), default=0) if jobs else "-"
-    avg_score = f"{sum(j.get('fit_score', 0) for j in jobs) / len(jobs):.0f}" if jobs else "-"
-
-    c1, c2, c3, c4 = st.columns(4)
-    _ts = top_score if isinstance(top_score, int) else 0
-    _as = int(avg_score) if avg_score != "-" else 0
-    for col, label, value, colour in [
-        (c1, "Total",     total,     "#e0e0e0"),
-        (c2, "Matching",  matching,  "#4f8ef7"),
-        (c3, "Top Score", top_score, "#28a745" if _ts >= 60 else "#ffc107" if _ts >= 35 else "#6c757d"),
-        (c4, "Avg Score", avg_score, "#28a745" if _as >= 60 else "#ffc107" if _as >= 35 else "#6c757d"),
-    ]:
-        col.markdown(stat_card(label, value, colour), unsafe_allow_html=True)
-
-    st.divider()
-
     if not jobs:
         st.info("No jobs found yet. Run a search from **Overview** or **Settings**.")
     else:
-        f1, f2, f3 = st.columns([1, 2, 1])
+        # ── Filters: search + score slider ────────────────────────────────
+        f1, f2 = st.columns([3, 1])
         with f1:
-            min_score = st.selectbox("Min score", [0, 20, 40, 60, 80], index=0)
+            search = st.text_input("Search", placeholder="Title or company…", label_visibility="collapsed")
         with f2:
-            search = st.text_input("Search", placeholder="Title or company…")
-        with f3:
-            st.markdown('<div style="height:1.9rem"></div>', unsafe_allow_html=True)
-            show_zero = st.checkbox("Include score 0", value=False)
+            min_score = st.slider("Min score", 0, 100, 0, step=5)
 
         _hidden_urls = load_hidden_jobs()
         filtered = [
             j for j in jobs
-            if (j.get("fit_score", 0) >= min_score or (show_zero and j.get("fit_score", 0) == 0))
+            if j.get("fit_score", 0) >= min_score
             and (not search or search.lower() in j.get("title", "").lower()
                  or search.lower() in j.get("company", "").lower())
             and j.get("url", "") not in _hidden_urls
@@ -593,7 +631,6 @@ elif page == "Jobs":
             if "jobs_page" not in st.session_state:
                 st.session_state.jobs_page = 0
 
-            # Clamp page to valid range (filter change can shrink results)
             _max_page = max(0, (len(filtered) - 1) // _PAGE_SIZE)
             if st.session_state.jobs_page > _max_page:
                 st.session_state.jobs_page = 0
@@ -602,79 +639,83 @@ elif page == "Jobs":
             _page_end = min(_page_start + _PAGE_SIZE, len(filtered))
             _page_jobs = filtered[_page_start:_page_end]
 
-            # Load tracker once — used for list status dots and detail buttons
             tracker = load_tracker()
             _tracked_urls = {t["url"]: t["status"] for t in tracker if t.get("url")}
             _tracked_titles = {(t.get("title", "").lower(), t.get("company", "").lower()): t["status"] for t in tracker}
 
-            list_col, detail_col = st.columns([1, 1.2])
+            list_col, detail_col = st.columns([1, 1.8])
 
+            # ── Job list ──────────────────────────────────────────────────
             with list_col:
-                with st.container(height=450):
-                    for local_idx, job in enumerate(_page_jobs):
+                with st.container(height=550):
+                    for local_idx, _j in enumerate(_page_jobs):
                         orig_idx = _page_start + local_idx
-                        score = job.get("fit_score", 0)
+                        _sc = _j.get("fit_score", 0)
                         is_sel = st.session_state.sel_idx == orig_idx
-                        title = job['title']
-                        company = job['company']
-                        _jurl = job.get("url", "")
-                        _jst = _tracked_urls.get(_jurl) or _tracked_titles.get((title.lower(), company.lower()))
-                        status_char = "✓" if _jst == "Applied" else ("·" if _jst else " ")
-                        _dp = job.get("date_posted", "")
-                        try:
-                            _days_old = (datetime.now() - datetime.strptime(str(_dp)[:10], "%Y-%m-%d")).days
-                            new_marker = " ★" if _days_old <= 3 else ""
-                        except Exception:
-                            new_marker = ""
-                        label = f"{score:>3} {status_char} {title[:23] + ('…' if len(title) > 23 else '')}{new_marker}"
-                        label += f"\n       {company[:24] + ('…' if len(company) > 24 else '')}"
+                        _t = _j["title"]
+                        _c = _j.get("company", "")
+
+                        # Build clean two-line label: title [score] / company
+                        _t_disp = _t[:40] + ("…" if len(_t) > 40 else "")
+                        label = f"{_t_disp}  [{_sc}]"
+                        if _c:
+                            label += f"\n{_c}"
+
                         if st.button(label, key=f"j{orig_idx}", use_container_width=True,
                                      type="primary" if is_sel else "secondary"):
                             st.session_state.sel_idx = orig_idx
                             st.rerun()
 
-                # Pagination controls (outside scrollable container)
+                # Pagination
                 if len(filtered) > _PAGE_SIZE:
                     _pc1, _pc2, _pc3 = st.columns([1, 2, 1])
                     with _pc1:
-                        if _page > 0 and st.button("◄ Prev", use_container_width=True):
+                        if _page > 0 and st.button("Prev", use_container_width=True):
                             st.session_state.jobs_page -= 1
                             st.session_state.sel_idx = (_page - 1) * _PAGE_SIZE
                             st.rerun()
                     with _pc2:
-                        st.caption(f"Page {_page + 1} / {_max_page + 1}  ·  {_page_start + 1}–{_page_end} of {len(filtered)}")
+                        st.caption(f"Page {_page + 1} / {_max_page + 1}")
                     with _pc3:
-                        if _page < _max_page and st.button("Next ►", use_container_width=True):
+                        if _page < _max_page and st.button("Next", use_container_width=True):
                             st.session_state.jobs_page += 1
                             st.session_state.sel_idx = (_page + 1) * _PAGE_SIZE
                             st.rerun()
 
+            # ── Detail panel ──────────────────────────────────────────────
             sel_idx = min(st.session_state.sel_idx, len(filtered) - 1)
             job = filtered[sel_idx]
 
             with detail_col:
                 score = job.get("fit_score", 0)
                 bc = "#28a745" if score >= 60 else "#ffc107" if score >= 35 else "#6c757d"
-                _source_txt = f' &nbsp;·&nbsp; {job["source"]}' if job.get("source") else ''
+                _meta_parts = []
+                if job.get("company"):
+                    _meta_parts.append(job["company"])
+                if job.get("location"):
+                    _meta_parts.append(job["location"])
+                _rd = relative_date(job.get("date_posted", ""))
+                if _rd and _rd != "—":
+                    _meta_parts.append(_rd)
+                _sal = job.get("salary", "")
+                if _sal:
+                    _meta_parts.append(_sal)
+                if job.get("source"):
+                    _meta_parts.append(job["source"])
+
                 st.markdown(
                     f'<div class="detail-header">'
-                    f'<div class="dh-title">{job["title"]}</div>'
-                    f'<div class="dh-row">'
-                    f'<span class="score-badge" style="background:{bc}22;color:{bc}">{score}</span>'
-                    f'<span class="dh-company">{job["company"]}</span>'
+                    f'<div class="dh-title-row">'
+                    f'<span class="dh-title">{job["title"]}</span>'
+                    f'<span class="score-badge" style="background:{bc}22;color:{bc};font-size:0.85rem">{score}</span>'
                     f'</div>'
-                    f'<div class="dh-meta">'
-                    f'📍 {job.get("location","—")} &nbsp;·&nbsp; '
-                    f'📅 {relative_date(job.get("date_posted",""))} &nbsp;·&nbsp; '
-                    f'💰 {job.get("salary","Not listed")}{_source_txt}'
-                    f'</div>'
+                    f'<div class="dh-meta">{" &nbsp;·&nbsp; ".join(_meta_parts)}</div>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
 
-                b1, b2, b3, b4, b5 = st.columns(5)
+                # ── Action buttons (3 only) ──────────────────────────────
                 job_url = job.get("url", "#")
-
                 tracked_entry = next(
                     (t for t in tracker if t.get("url") == job_url or
                      (t.get("title") == job.get("title") and t.get("company") == job.get("company"))),
@@ -683,13 +724,23 @@ elif page == "Jobs":
                 _entry_status = tracked_entry.get("status") if tracked_entry else None
                 already_applied = _entry_status in ("Applied", "Interview", "Offer", "Rejected")
 
+                b1, b2, b3 = st.columns(3)
                 with b1:
-                    if not already_applied and job_url and job_url != "#":
+                    if job_url and job_url != "#":
                         st.link_button("Apply", job_url, type="primary", use_container_width=True)
-
                 with b2:
+                    if tracked_entry:
+                        if st.button("Untrack", use_container_width=True, key=f"untrack_{sel_idx}"):
+                            tracker = [t for t in tracker if t.get("id") != tracked_entry.get("id")]
+                            save_tracker(tracker)
+                            st.rerun()
+                    else:
+                        if st.button("Track", use_container_width=True, key=f"track_{sel_idx}"):
+                            add_to_tracker(job)
+                            st.rerun()
+                with b3:
                     if already_applied:
-                        if st.button(f"↩ Undo ({_entry_status})", use_container_width=True, key=f"applied_{sel_idx}"):
+                        if st.button(f"Undo ({_entry_status})", use_container_width=True, key=f"applied_{sel_idx}"):
                             real_idx = next(i for i, t in enumerate(tracker)
                                             if t.get("id") == tracked_entry.get("id"))
                             tracker[real_idx]["status"] = "Saved"
@@ -724,83 +775,83 @@ elif page == "Jobs":
                             st.toast("Marked as applied!")
                             st.rerun()
 
-                with b4:
-                    if tracked_entry:
-                        if st.button("Untrack", use_container_width=True, key=f"untrack_{sel_idx}"):
-                            tracker = [t for t in tracker if t.get("id") != tracked_entry.get("id")]
-                            save_tracker(tracker)
-                            st.rerun()
-                    else:
-                        if st.button("Track", use_container_width=True, key=f"track_{sel_idx}"):
-                            add_to_tracker(job)
-                            st.rerun()
+                # Hide link (subtle, below actions)
+                if st.button("Hide this job", key=f"hide_{sel_idx}", type="tertiary"):
+                    _hidden = load_hidden_jobs()
+                    _hidden.add(job_url)
+                    save_hidden_jobs(_hidden)
+                    st.session_state.sel_idx = max(0, sel_idx - 1)
+                    st.rerun()
 
-                with b5:
-                    if st.button("Hide", use_container_width=True, key=f"hide_{sel_idx}", type="secondary"):
-                        _hidden = load_hidden_jobs()
-                        _hidden.add(job_url)
-                        save_hidden_jobs(_hidden)
-                        st.session_state.sel_idx = max(0, sel_idx - 1)
-                        st.rerun()
+                # ── Detail tabs ───────────────────────────────────────────
+                tab_desc, tab_ats, tab_letter, tab_research = st.tabs(
+                    ["Description", "ATS Match", "Cover Letter", "Research"]
+                )
 
-                with b3:
-                    company = job.get("company", "")
-                    reports = load_company_reports()
-                    if company in reports:
-                        if st.button("View Report", use_container_width=True, key=f"report_{sel_idx}"):
-                            st.session_state["show_report"] = company
-                    else:
-                        if st.button("Research", use_container_width=True, key=f"research_{sel_idx}"):
-                            with st.spinner("Researching…"):
-                                report = generate_company_report(company, job.get("title"))
-                                save_company_report(company, report)
-                            st.session_state["show_report"] = company
-                            st.rerun()
+                with tab_desc:
+                    st.write(job.get("description", "No description available."))
 
-                if st.session_state.get("show_report") == job.get("company"):
-                    reports = load_company_reports()
-                    if job.get("company") in reports:
-                        st.markdown("---")
-                        st.markdown(reports[job.get("company")])
-                        if st.button("Close", key="close_rep"):
-                            st.session_state["show_report"] = None
-                            st.rerun()
-
-                # ── Cover Letter ───────────────────────────────────────────────
-                st.divider()
-                cl_key = f"cl_{job.get('url', '') or job.get('title', '')}"
-
-                if st.button("✉ Generate Cover Letter", use_container_width=True, key=f"cl_btn_{sel_idx}"):
-                    _databank = load_qa_databank()
-                    _reports = load_company_reports()
-                    _company_research = _reports.get(job.get("company", ""), "")
-                    with st.spinner("Drafting cover letter… (3 AI calls, ~20s)"):
-                        _cl_result = _generate_cover_letter(
-                            {
-                                "title": job.get("title", ""),
-                                "company": job.get("company", ""),
-                                "description": job.get("description", ""),
-                                "location": job.get("location", ""),
-                            },
-                            _databank,
-                            company_research=_company_research,
-                        )
-                    st.session_state[cl_key] = _cl_result
-
-                cl_result = st.session_state.get(cl_key)
-                if cl_result:
-                    qc = cl_result["quality_checks"]
-                    match_pct = int(cl_result["match_quality"] * 100)
-                    steps_str = " \u2192 ".join(cl_result["steps"])
-                    status_icon = "\u2705" if qc.get("passes") else "\u26a0\ufe0f"
-                    st.caption(
-                        f"{status_icon} Match: {match_pct}%  \u00b7  Words: {cl_result['word_count']}  \u00b7  {steps_str}"
+                with tab_ats:
+                    from tools.ats_matcher import match_job as _ats_match
+                    _ats = _ats_match(job.get("description", ""), job.get("title", ""))
+                    _mpct = _ats["match_pct"]
+                    _mc = "#28a745" if _mpct >= 60 else "#ffc107" if _mpct >= 35 else "#dc3545"
+                    st.markdown(
+                        f'<span style="font-size:1.6rem;font-weight:700;color:{_mc}">{_mpct}%</span>'
+                        f' &nbsp; keyword match ({len(_ats["matched"])} of {_ats["job_skills_count"]} skills)',
+                        unsafe_allow_html=True,
                     )
-                    if cl_result["unmatched"]:
-                        st.warning("No match for: " + ", ".join(cl_result["unmatched"]))
-                    if qc.get("ai_phrases"):
-                        st.error("AI phrases remain: " + ", ".join(qc["ai_phrases"]))
-                    with st.expander("Cover Letter", expanded=True):
+                    if _ats["experience_required"]:
+                        st.caption(f"Experience required: {_ats['experience_required']}")
+                    _ac, _bc = st.columns(2)
+                    with _ac:
+                        if _ats["matched"]:
+                            st.markdown("**You have:**")
+                            st.markdown(" ".join(
+                                f'<span style="background:#28a74522;color:#28a745;padding:2px 8px;'
+                                f'border-radius:4px;margin:2px;display:inline-block">{s}</span>'
+                                for s in _ats["matched"]
+                            ), unsafe_allow_html=True)
+                    with _bc:
+                        if _ats["missing"]:
+                            st.markdown("**Missing:**")
+                            st.markdown(" ".join(
+                                f'<span style="background:#dc354522;color:#dc3545;padding:2px 8px;'
+                                f'border-radius:4px;margin:2px;display:inline-block">{s}</span>'
+                                for s in _ats["missing"]
+                            ), unsafe_allow_html=True)
+                    if _ats["missing"]:
+                        st.caption("Add any of these missing skills to your profile if you have them.")
+
+                with tab_letter:
+                    cl_key = f"cl_{job.get('url', '') or job.get('title', '')}"
+                    if st.button("Generate Cover Letter", use_container_width=True, key=f"cl_btn_{sel_idx}"):
+                        _databank = load_qa_databank()
+                        _reports = load_company_reports()
+                        _company_research = _reports.get(job.get("company", ""), "")
+                        with st.spinner("Drafting cover letter…"):
+                            _cl_result = _generate_cover_letter(
+                                {
+                                    "title": job.get("title", ""),
+                                    "company": job.get("company", ""),
+                                    "description": job.get("description", ""),
+                                    "location": job.get("location", ""),
+                                },
+                                _databank,
+                                company_research=_company_research,
+                            )
+                        st.session_state[cl_key] = _cl_result
+
+                    cl_result = st.session_state.get(cl_key)
+                    if cl_result:
+                        qc = cl_result["quality_checks"]
+                        match_pct = int(cl_result["match_quality"] * 100)
+                        status_icon = "\u2705" if qc.get("passes") else "\u26a0\ufe0f"
+                        st.caption(f"{status_icon} Match: {match_pct}%  \u00b7  Words: {cl_result['word_count']}")
+                        if cl_result["unmatched"]:
+                            st.warning("No match for: " + ", ".join(cl_result["unmatched"]))
+                        if qc.get("ai_phrases"):
+                            st.error("AI phrases remain: " + ", ".join(qc["ai_phrases"]))
                         st.text_area(
                             "letter",
                             value=cl_result["cover_letter"],
@@ -808,47 +859,22 @@ elif page == "Jobs":
                             key=f"cl_text_{sel_idx}",
                             label_visibility="collapsed",
                         )
-                        if st.button("\u21ba Regenerate", key=f"cl_regen_{sel_idx}"):
+                        if st.button("Regenerate", key=f"cl_regen_{sel_idx}"):
                             del st.session_state[cl_key]
                             st.rerun()
 
-            # ── ATS Keyword Match ──────────────────────────────────────────
-            with st.expander("ATS Keyword Match", expanded=False):
-                from tools.ats_matcher import match_job as _ats_match
-                _ats = _ats_match(job.get("description", ""), job.get("title", ""))
-                _mpct = _ats["match_pct"]
-                _mc = "#28a745" if _mpct >= 60 else "#ffc107" if _mpct >= 35 else "#dc3545"
-                st.markdown(
-                    f'<span style="font-size:1.6rem;font-weight:700;color:{_mc}">{_mpct}%</span>'
-                    f' &nbsp; keyword match ({len(_ats["matched"])} of {_ats["job_skills_count"]} skills)',
-                    unsafe_allow_html=True,
-                )
-                if _ats["experience_required"]:
-                    st.caption(f"Experience required: {_ats['experience_required']}")
-
-                _ac, _bc = st.columns(2)
-                with _ac:
-                    if _ats["matched"]:
-                        st.markdown("**You have:**")
-                        st.markdown(" ".join(
-                            f'<span style="background:#28a74522;color:#28a745;padding:2px 8px;'
-                            f'border-radius:4px;margin:2px;display:inline-block">{s}</span>'
-                            for s in _ats["matched"]
-                        ), unsafe_allow_html=True)
-                with _bc:
-                    if _ats["missing"]:
-                        st.markdown("**Missing:**")
-                        st.markdown(" ".join(
-                            f'<span style="background:#dc354522;color:#dc3545;padding:2px 8px;'
-                            f'border-radius:4px;margin:2px;display:inline-block">{s}</span>'
-                            for s in _ats["missing"]
-                        ), unsafe_allow_html=True)
-
-                if _ats["missing"]:
-                    st.caption("Tip: Add any of these missing skills to your profile if you have them.")
-
-            with st.expander("Job Description", expanded=False):
-                st.write(job.get("description", "No description available."))
+                with tab_research:
+                    company = job.get("company", "")
+                    reports = load_company_reports()
+                    if company in reports:
+                        st.markdown(reports[company])
+                    else:
+                        st.caption("No research yet for this company.")
+                    if st.button("Research Company", use_container_width=True, key=f"research_{sel_idx}"):
+                        with st.spinner("Researching…"):
+                            report = generate_company_report(company, job.get("title"))
+                            save_company_report(company, report)
+                        st.rerun()
 
         else:
             st.info("No jobs match your filters — try lowering the minimum score or clearing the search.")
@@ -860,21 +886,11 @@ elif page == "Jobs":
 
 elif page == "Tracker":
     tracker = load_tracker()
-
-    # ── Header counts ──
     counts = {s: sum(1 for t in tracker if t.get("status") == s) for s in TRACKER_STATUSES}
-    h_cols = st.columns(len(TRACKER_STATUSES))
-    for col, status in zip(h_cols, TRACKER_STATUSES):
-        col.markdown(
-            stat_card(status, counts[status], STATUS_COLOURS[status]),
-            unsafe_allow_html=True,
-        )
 
     if not tracker:
         st.info("Nothing tracked yet. Open a job in **Jobs** and click **Track**.")
     else:
-        st.divider()
-
         # ── Kanban tabs (one per status) ──
         tab_labels = [f"{s} ({counts[s]})" for s in TRACKER_STATUSES]
         tabs = st.tabs(tab_labels)
@@ -896,7 +912,9 @@ elif page == "Tracker":
                     )
                     continue
 
-                # ── Applied tab: group by application date with mass-reject ──
+                status_idx = TRACKER_STATUSES.index(status)
+
+                # ── Applied tab: group by date with mass-reject ──
                 if status == "Applied":
                     from itertools import groupby
                     keyfn = lambda x: x.get("date_applied") or "Unknown date"
@@ -918,12 +936,8 @@ elif page == "Tracker":
                                 unsafe_allow_html=True,
                             )
                         with hdr_cols[1]:
-                            if st.button(
-                                f"Reject All",
-                                key=f"mass_reject_{date_label}",
-                                use_container_width=True,
-                                type="secondary",
-                            ):
+                            if st.button("Reject All", key=f"mass_reject_{date_label}",
+                                         use_container_width=True, type="secondary"):
                                 for i, t in enumerate(tracker):
                                     if t.get("id") in group_ids:
                                         tracker[i]["status"] = "Rejected"
@@ -937,148 +951,18 @@ elif page == "Tracker":
                             )
                             if real_idx is None:
                                 continue
-
-                            score = entry.get("fit_score", 0)
-                            score_col = "#28a745" if score >= 60 else "#ffc107" if score >= 35 else "#6c757d"
-
-                            with st.container(border=True):
-                                meta_parts = []
-                                if entry.get("salary"):
-                                    meta_parts.append(entry["salary"])
-                                if entry.get("location"):
-                                    meta_parts.append(entry["location"])
-                                meta_str = "  ·  ".join(meta_parts)
-
-                                st.markdown(
-                                    f'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px;">'
-                                    f'<div>'
-                                    f'<div style="font-size:0.88rem;font-weight:600;color:#e0e0e0">{entry.get("title","?")}</div>'
-                                    f'<div style="font-size:0.72rem;color:#666;margin-top:2px">{entry.get("company","")}</div>'
-                                    f'</div>'
-                                    f'<span style="font-size:1.15rem;font-weight:700;color:{score_col};flex-shrink:0;margin-left:10px">{score}</span>'
-                                    f'</div>'
-                                    + (f'<div style="font-size:0.68rem;color:#444;margin-bottom:4px">{meta_str}</div>' if meta_str else ''),
-                                    unsafe_allow_html=True,
-                                )
-
-                                new_notes = st.text_area(
-                                    "Notes", value=entry.get("notes", ""),
-                                    placeholder="Interview date, contact name…",
-                                    key=f"notes_{entry_id}",
-                                    label_visibility="collapsed",
-                                    height=60,
-                                )
-                                if new_notes != entry.get("notes", ""):
-                                    tracker[real_idx]["notes"] = new_notes
-                                    save_tracker(tracker)
-
-                                btn_cols = st.columns([1, 1, 1, 1])
-                                with btn_cols[0]:
-                                    if entry.get("url"):
-                                        st.link_button("Open", entry["url"], use_container_width=True)
-                                with btn_cols[1]:
-                                    if st.button("→ Interview", key=f"fwd_{entry_id}", use_container_width=True):
-                                        tracker[real_idx]["status"] = "Interview"
-                                        save_tracker(tracker)
-                                        st.rerun()
-                                with btn_cols[2]:
-                                    if st.button("← Saved", key=f"bck_{entry_id}", use_container_width=True):
-                                        tracker[real_idx]["status"] = "Saved"
-                                        tracker[real_idx]["date_applied"] = ""
-                                        save_tracker(tracker)
-                                        st.rerun()
-                                with btn_cols[3]:
-                                    if st.button("Remove", key=f"rm_{entry_id}", use_container_width=True, type="secondary"):
-                                        tracker.pop(real_idx)
-                                        save_tracker(tracker)
-                                        st.rerun()
+                            _render_tracker_entry(entry, tracker, real_idx, status, status_idx)
                     continue
 
+                # ── All other statuses ──
                 for entry in entries_sorted:
-                    # Find real index in the full tracker list for mutations
                     entry_id = entry.get("id")
                     real_idx = next(
                         (i for i, t in enumerate(tracker) if t.get("id") == entry_id), None
                     )
                     if real_idx is None:
                         continue
-
-                    score = entry.get("fit_score", 0)
-                    score_col = "#28a745" if score >= 60 else "#ffc107" if score >= 35 else "#6c757d"
-
-                    with st.container(border=True):
-                        # Title + score + meta (HTML header)
-                        meta_parts = []
-                        if entry.get("salary"):
-                            meta_parts.append(entry["salary"])
-                        if entry.get("location"):
-                            meta_parts.append(entry["location"])
-                        if entry.get("date_applied"):
-                            meta_parts.append(f"Applied {relative_date(entry['date_applied'])}")
-                        elif entry.get("date_added"):
-                            meta_parts.append(f"Saved {relative_date(entry['date_added'])}")
-                        meta_str = "  ·  ".join(meta_parts)
-
-                        st.markdown(
-                            f'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px;">'
-                            f'<div>'
-                            f'<div style="font-size:0.88rem;font-weight:600;color:#e0e0e0">{entry.get("title","?")}</div>'
-                            f'<div style="font-size:0.72rem;color:#666;margin-top:2px">{entry.get("company","")}</div>'
-                            f'</div>'
-                            f'<span style="font-size:1.15rem;font-weight:700;color:{score_col};flex-shrink:0;margin-left:10px">{score}</span>'
-                            f'</div>'
-                            + (f'<div style="font-size:0.68rem;color:#444;margin-bottom:4px">{meta_str}</div>' if meta_str else ''),
-                            unsafe_allow_html=True,
-                        )
-
-                        # Notes (inline edit)
-                        new_notes = st.text_area(
-                            "Notes", value=entry.get("notes", ""),
-                            placeholder="Interview date, contact name…",
-                            key=f"notes_{entry_id}",
-                            label_visibility="collapsed",
-                            height=60,
-                        )
-                        if new_notes != entry.get("notes", ""):
-                            tracker[real_idx]["notes"] = new_notes
-                            save_tracker(tracker)
-
-                        # Action row
-                        status_idx = TRACKER_STATUSES.index(status)
-                        btn_cols = st.columns([1, 1, 1, 1])
-
-                        with btn_cols[0]:
-                            if entry.get("url"):
-                                st.link_button("Open", entry["url"], use_container_width=True)
-
-                        with btn_cols[1]:
-                            # Move forward
-                            if status_idx < len(TRACKER_STATUSES) - 1:
-                                next_status = TRACKER_STATUSES[status_idx + 1]
-                                if st.button(f"→ {next_status}", key=f"fwd_{entry_id}",
-                                             use_container_width=True):
-                                    tracker[real_idx]["status"] = next_status
-                                    if next_status == "Applied" and not tracker[real_idx].get("date_applied"):
-                                        tracker[real_idx]["date_applied"] = datetime.now().strftime("%Y-%m-%d")
-                                    save_tracker(tracker)
-                                    st.rerun()
-
-                        with btn_cols[2]:
-                            # Move back
-                            if status_idx > 0:
-                                prev_status = TRACKER_STATUSES[status_idx - 1]
-                                if st.button(f"← {prev_status}", key=f"bck_{entry_id}",
-                                             use_container_width=True):
-                                    tracker[real_idx]["status"] = prev_status
-                                    save_tracker(tracker)
-                                    st.rerun()
-
-                        with btn_cols[3]:
-                            if st.button("Remove", key=f"rm_{entry_id}",
-                                         use_container_width=True, type="secondary"):
-                                tracker.pop(real_idx)
-                                save_tracker(tracker)
-                                st.rerun()
+                    _render_tracker_entry(entry, tracker, real_idx, status, status_idx)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1487,107 +1371,113 @@ elif page == "Settings":
         personal = databank.get("personal_info", {})
         work_auth = databank.get("work_authorization", {})
 
-        with st.expander("Personal Info", expanded=True):
-            c1, c2 = st.columns(2)
-            with c1:
-                new_name = st.text_input("Name", value=personal.get("full_name", ""), key="p_name")
-                new_email = st.text_input("Email", value=personal.get("email", ""), key="p_email")
-                new_phone = st.text_input("Phone", value=personal.get("phone", ""), key="p_phone")
-            with c2:
-                new_city = st.text_input("City", value=personal.get("city", ""), key="p_city")
-                new_postcode = st.text_input("Postcode", value=personal.get("postcode", ""), key="p_postcode")
-                new_country = st.text_input("Country", value=personal.get("country", ""), key="p_country")
-            new_linkedin = st.text_input("LinkedIn", value=personal.get("linkedin", ""), key="p_li")
+        # ── About You (Personal Info + Work Authorization) ────────────────
+        st.subheader("About You")
+        c1, c2 = st.columns(2)
+        with c1:
+            new_name = st.text_input("Name", value=personal.get("full_name", ""), key="p_name")
+            new_email = st.text_input("Email", value=personal.get("email", ""), key="p_email")
+            new_phone = st.text_input("Phone", value=personal.get("phone", ""), key="p_phone")
+        with c2:
+            new_city = st.text_input("City", value=personal.get("city", ""), key="p_city")
+            new_postcode = st.text_input("Postcode", value=personal.get("postcode", ""), key="p_postcode")
+            new_country = st.text_input("Country", value=personal.get("country", ""), key="p_country")
+        new_linkedin = st.text_input("LinkedIn", value=personal.get("linkedin", ""), key="p_li")
 
-            new_personal = {
-                "full_name": new_name, "email": new_email, "phone": new_phone,
-                "city": new_city, "postcode": new_postcode, "country": new_country,
-                "linkedin": new_linkedin,
-                "github": personal.get("github", ""), "portfolio": personal.get("portfolio", ""),
-            }
-            if new_personal != personal:
-                databank["personal_info"] = new_personal
-                save_qa_databank(databank)
+        wc1, wc2, wc3 = st.columns(3)
+        with wc1:
+            new_uk = st.selectbox("Eligible to work in UK?", ["Yes", "No", ""],
+                index=["Yes", "No", ""].index(work_auth.get("eligible_to_work_uk", "")), key="wa_uk")
+        with wc2:
+            new_sponsor = st.selectbox("Require sponsorship?", ["Yes", "No", ""],
+                index=["Yes", "No", ""].index(work_auth.get("require_sponsorship", "")), key="wa_sp")
+        with wc3:
+            new_notice = st.text_input("Notice Period", value=work_auth.get("notice_period", ""), key="wa_np")
 
-        with st.expander("Work Authorization", expanded=False):
-            wc1, wc2, wc3 = st.columns(3)
-            with wc1:
-                new_uk = st.selectbox("Eligible to work in UK?", ["Yes", "No", ""],
-                    index=["Yes", "No", ""].index(work_auth.get("eligible_to_work_uk", "")), key="wa_uk")
-            with wc2:
-                new_sponsor = st.selectbox("Require sponsorship?", ["Yes", "No", ""],
-                    index=["Yes", "No", ""].index(work_auth.get("require_sponsorship", "")), key="wa_sp")
-            with wc3:
-                new_notice = st.text_input("Notice Period", value=work_auth.get("notice_period", ""), key="wa_np")
+        new_personal = {
+            "full_name": new_name, "email": new_email, "phone": new_phone,
+            "city": new_city, "postcode": new_postcode, "country": new_country,
+            "linkedin": new_linkedin,
+            "github": personal.get("github", ""), "portfolio": personal.get("portfolio", ""),
+        }
+        if new_personal != personal:
+            databank["personal_info"] = new_personal
+            save_qa_databank(databank)
 
-            new_work_auth = {
-                "eligible_to_work_uk": new_uk, "require_sponsorship": new_sponsor,
-                "notice_period": new_notice, "availability": work_auth.get("availability", ""),
-            }
-            if new_work_auth != work_auth:
-                databank["work_authorization"] = new_work_auth
-                save_qa_databank(databank)
+        new_work_auth = {
+            "eligible_to_work_uk": new_uk, "require_sponsorship": new_sponsor,
+            "notice_period": new_notice, "availability": work_auth.get("availability", ""),
+        }
+        if new_work_auth != work_auth:
+            databank["work_authorization"] = new_work_auth
+            save_qa_databank(databank)
 
-        with st.expander("Q&A Bank", expanded=False):
-            st.caption("Saved answers used by the Chrome extension")
-            questions = databank.get("questions", {})
-            updated_questions = {}
-            for question, answer in questions.items():
-                updated_questions[question] = st.text_area(
-                    question, value=answer or "", height=70, key=f"qa_{hash(question)}")
-            if updated_questions != questions:
-                databank["questions"] = updated_questions
-                save_qa_databank(databank)
+        st.divider()
 
-            st.markdown("---")
-            nc1, nc2 = st.columns([1, 2])
-            with nc1:
-                new_q = st.text_input("Question", key="new_q", label_visibility="collapsed", placeholder="Question…")
-            with nc2:
-                new_a = st.text_input("Answer", key="new_a", label_visibility="collapsed", placeholder="Your answer…")
-            if st.button("Add Q&A", key="add_qa"):
+        # ── Q&A Bank ─────────────────────────────────────────────────────
+        st.subheader("Q&A Bank")
+        st.caption("Saved answers used by the Chrome extension")
+        questions = databank.get("questions", {})
+        updated_questions = {}
+        for question, answer in questions.items():
+            updated_questions[question] = st.text_area(
+                question, value=answer or "", height=70, key=f"qa_{hash(question)}")
+        if updated_questions != questions:
+            databank["questions"] = updated_questions
+            save_qa_databank(databank)
+
+        nc1, nc2, nc3 = st.columns([2, 3, 1])
+        with nc1:
+            new_q = st.text_input("Question", key="new_q", label_visibility="collapsed", placeholder="Question…")
+        with nc2:
+            new_a = st.text_input("Answer", key="new_a", label_visibility="collapsed", placeholder="Your answer…")
+        with nc3:
+            if st.button("Add", key="add_qa", use_container_width=True):
                 if new_q:
                     databank["questions"][new_q] = new_a
                     save_qa_databank(databank)
                     st.rerun()
 
-        with st.expander("Scoring Profile", expanded=False):
-            c1, c2 = st.columns(2)
-            with c1:
-                new_req = st.text_area("Required Skills (one per line)",
-                    value="\n".join(skills.get("required", [])), height=100, key="s_req")
-                new_locs = st.text_area("Preferred Locations (one per line)",
-                    value="\n".join(locations.get("preferred", [])), height=80, key="s_locs")
-            with c2:
-                new_pref = st.text_area("Preferred Skills (one per line)",
-                    value="\n".join(skills.get("preferred", [])), height=100, key="s_pref")
-                sc1, sc2 = st.columns(2)
-                with sc1:
-                    new_min_sal = st.number_input("Min Salary", value=salary.get("minimum", 20000), step=1000, key="s_min")
-                with sc2:
-                    new_pref_sal = st.number_input("Pref Salary", value=salary.get("preferred", 30000), step=1000, key="s_pref_sal")
+        st.divider()
 
-            new_deal = st.text_area("Dealbreakers (one per line)",
-                value="\n".join(user.get("dealbreakers", [])), height=70, key="deal")
+        # ── Scoring Profile ──────────────────────────────────────────────
+        st.subheader("Scoring Profile")
+        c1, c2 = st.columns(2)
+        with c1:
+            new_req = st.text_area("Required Skills (one per line)",
+                value="\n".join(skills.get("required", [])), height=100, key="s_req")
+            new_locs = st.text_area("Preferred Locations (one per line)",
+                value="\n".join(locations.get("preferred", [])), height=80, key="s_locs")
+        with c2:
+            new_pref = st.text_area("Preferred Skills (one per line)",
+                value="\n".join(skills.get("preferred", [])), height=100, key="s_pref")
+            sc1, sc2 = st.columns(2)
+            with sc1:
+                new_min_sal = st.number_input("Min Salary", value=salary.get("minimum", 20000), step=1000, key="s_min")
+            with sc2:
+                new_pref_sal = st.number_input("Pref Salary", value=salary.get("preferred", 30000), step=1000, key="s_pref_sal")
 
-            new_profile = {
-                "profile": {
-                    "name": user.get("name", ""),
-                    "skills": {
-                        "required": [s.strip() for s in new_req.split("\n") if s.strip()],
-                        "preferred": [s.strip() for s in new_pref.split("\n") if s.strip()],
-                    },
-                    "locations": {
-                        "preferred": [s.strip() for s in new_locs.split("\n") if s.strip()],
-                        "acceptable": locations.get("acceptable", []),
-                    },
-                    "salary": {"minimum": int(new_min_sal), "preferred": int(new_pref_sal)},
-                    "dealbreakers": [s.strip() for s in new_deal.split("\n") if s.strip()],
+        new_deal = st.text_area("Dealbreakers (one per line)",
+            value="\n".join(user.get("dealbreakers", [])), height=70, key="deal")
+
+        new_profile = {
+            "profile": {
+                "name": user.get("name", ""),
+                "skills": {
+                    "required": [s.strip() for s in new_req.split("\n") if s.strip()],
+                    "preferred": [s.strip() for s in new_pref.split("\n") if s.strip()],
                 },
-                "scoring": profile.get("scoring", {}),
-            }
-            if new_profile != profile:
-                save_profile(new_profile)
+                "locations": {
+                    "preferred": [s.strip() for s in new_locs.split("\n") if s.strip()],
+                    "acceptable": locations.get("acceptable", []),
+                },
+                "salary": {"minimum": int(new_min_sal), "preferred": int(new_pref_sal)},
+                "dealbreakers": [s.strip() for s in new_deal.split("\n") if s.strip()],
+            },
+            "scoring": profile.get("scoring", {}),
+        }
+        if new_profile != profile:
+            save_profile(new_profile)
 
     # ── Search tab ───────────────────────────────────────────────────────────
     with tab_search:
