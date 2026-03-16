@@ -25,19 +25,22 @@ def load_config():
         return yaml.safe_load(f)
 
 
-def normalize_job(raw_data, source):
+def normalize_job(raw_data, source, extra_fields=None):
     """Ensure a job dict has all standard fields."""
-    return {
+    job = {
         "title": raw_data.get("title", "").strip(),
         "company": raw_data.get("company", "").strip(),
         "location": raw_data.get("location", "").strip(),
         "url": raw_data.get("url", "").strip(),
         "date_posted": raw_data.get("date_posted", "").strip(),
         "salary": raw_data.get("salary", "").strip(),
-        "description": raw_data.get("description", "").strip()[:2000],
+        "description": raw_data.get("description", "").strip(),
         "source": source,
         "scraped_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
+    if extra_fields:
+        job.update(extra_fields)
+    return job
 
 
 def save_raw_results(jobs, filename):

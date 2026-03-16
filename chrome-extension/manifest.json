@@ -13,6 +13,9 @@
     "sidePanel",
     "tabs"
   ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "optional_host_permissions": [
     "http://localhost:5000/*"
   ],

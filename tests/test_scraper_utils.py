@@ -57,10 +57,10 @@ def test_normalize_missing_fields_default_to_empty_string():
         assert result[field] == ""
 
 
-def test_normalize_description_truncated_at_2000_chars(raw_job):
-    raw_job["description"] = "x" * 3000
+def test_normalize_description_preserves_full_length(raw_job):
+    raw_job["description"] = "x" * 5000
     result = normalize_job(raw_job, "test")
-    assert len(result["description"]) == 2000
+    assert len(result["description"]) == 5000
 
 
 def test_normalize_description_under_2000_not_truncated(raw_job):
@@ -73,6 +73,12 @@ def test_normalize_output_has_all_standard_fields(raw_job):
     result = normalize_job(raw_job, "test")
     expected_fields = {"title", "company", "location", "url", "date_posted", "salary", "description", "source", "scraped_at"}
     assert set(result.keys()) == expected_fields
+
+
+def test_normalize_with_extra_fields(raw_job):
+    result = normalize_job(raw_job, "test", extra_fields={"reed_job_id": 12345})
+    assert result["reed_job_id"] == 12345
+    assert result["source"] == "test"
 
 
 # ── save_raw_results ──────────────────────────────────────────────────────────

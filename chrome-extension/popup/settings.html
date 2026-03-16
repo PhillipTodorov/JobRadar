@@ -327,15 +327,41 @@
     <!-- Tab 3: Import/Export -->
     <div class="tab-content" id="tab-import-export">
       <div class="import-export-section">
+
+        <h3>Cloud Sync (GitHub Gist)</h3>
+        <p>Sync your extension config across browsers/machines using a private GitHub Gist.</p>
+        <div style="margin-bottom: 16px;">
+          <label>
+            GitHub Token <span style="color:#999;font-weight:normal">(needs <code>gist</code> scope)</span>:
+            <input type="password" id="gistToken" placeholder="ghp_xxxxx" />
+          </label>
+          <label>
+            Gist ID <span style="color:#999;font-weight:normal">(leave blank to create new)</span>:
+            <input type="text" id="gistId" placeholder="Auto-set after first push" />
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="gistAutoSync" checked />
+            Auto-sync on every save
+          </label>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <button id="gistPushBtn" class="btn btn-primary">Push to Gist</button>
+          <button id="gistPullBtn" class="btn btn-secondary">Pull from Gist</button>
+          <button id="gistSaveBtn" class="btn btn-small">Save Settings</button>
+        </div>
+        <p id="gistStatus" style="font-size:12px;color:#999;margin-bottom:20px;"></p>
+
+        <hr style="border:none;border-top:1px solid #ddd;margin:24px 0;" />
+
         <h3>Export Your Q&A Data</h3>
         <p>Download your Q&A databank as JSON for backup or sharing.</p>
-        <button id="exportBtn" class="btn btn-secondary">📥 Export to JSON</button>
+        <button id="exportBtn" class="btn btn-secondary">Export to JSON</button>
 
         <h3>Import Q&A Data</h3>
         <p>Import from JSON file or sync from backend.</p>
         <input type="file" id="importFile" accept=".json" style="display: none;" />
-        <button id="importBtn" class="btn btn-secondary">📤 Import from JSON</button>
-        <button id="syncFromBackendBtn" class="btn btn-secondary">🔄 Sync from Backend</button>
+        <button id="importBtn" class="btn btn-secondary">Import from JSON</button>
+        <button id="syncFromBackendBtn" class="btn btn-secondary">Sync from Backend</button>
       </div>
     </div>
 

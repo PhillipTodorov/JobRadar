@@ -5,16 +5,20 @@ merges results, saves to CSV, and optionally pushes to Google Sheets.
 """
 
 import importlib
+import json
 import sys
 from pathlib import Path
 
-from scraper_utils import load_config, save_csv, save_raw_results
+from scraper_utils import load_config, save_csv, save_raw_results, TMP_DIR
 
 # Map site names to their scraper modules
 SCRAPERS = {
     "linkedin": "scrape_serpapi",
     "google_jobs": "scrape_serpapi",
     "reed": "scrape_reed",
+    "adzuna": "scrape_adzuna",
+    "jooble": "scrape_jooble",
+    "careerjet": "scrape_careerjet",
     "email": "fetch_email_jobs",
 }
 
@@ -55,19 +59,67 @@ def run_pipeline():
         print("\nNo jobs scraped from any site.")
         sys.exit(1)
 
-    # Score jobs against user profile if profile exists
+    # Enrich partial/truncated descriptions before dedup and scoring
+    print(f"\n{'=' * 50}")
+    print("Enriching job descriptions...")
+    print(f"{'=' * 50}")
+    try:
+        from fetch_full_descriptions import enrich_descriptions
+        all_jobs = enrich_descriptions(all_jobs)
+    except Exception as e:
+        print(f"Description enrichment failed: {e}")
+        print("Continuing with original descriptions...")
+
+    # Merge with existing scored_jobs.json so we add to total, not replace
+    scored_path = TMP_DIR / "scored_jobs.json"
+    existing_jobs = []
+    if scored_path.exists():
+        try:
+            with open(scored_path, "r", encoding="utf-8") as f:
+                existing_jobs = json.load(f)
+            print(f"\nLoaded {len(existing_jobs)} existing jobs from scored_jobs.json")
+        except Exception:
+            existing_jobs = []
+
+    # Build dedup set from existing jobs (title + company)
+    seen = set()
+    for ej in existing_jobs:
+        key = (ej.get("title", "").lower().strip(), ej.get("company", "").lower().strip())
+        seen.add(key)
+
+    # Only add genuinely new jobs
+    new_jobs = []
+    for job in all_jobs:
+        key = (job.get("title", "").lower().strip(), job.get("company", "").lower().strip())
+        if key not in seen:
+            seen.add(key)
+            new_jobs.append(job)
+
+    print(f"New jobs to add: {len(new_jobs)} (skipped {len(all_jobs) - len(new_jobs)} duplicates)")
+
+    # Score new jobs against user profile if profile exists
     profile_path = Path(__file__).parent.parent / "user_profile.yaml"
-    if profile_path.exists():
+    if profile_path.exists() and new_jobs:
         try:
             from score_job_fit import score_jobs, save_scored_jobs
             print(f"\n{'=' * 50}")
-            print("Scoring jobs against user profile...")
+            print("Scoring new jobs against user profile...")
             print(f"{'=' * 50}")
-            all_jobs = score_jobs(all_jobs)
-            save_scored_jobs(all_jobs)
+            new_jobs = score_jobs(new_jobs)
         except Exception as e:
             print(f"Job scoring failed: {e}")
             print("Continuing without scores...")
+
+    # Merge: existing + new, then save
+    merged = existing_jobs + new_jobs
+    merged.sort(key=lambda x: x.get("fit_score", 0), reverse=True)
+
+    if profile_path.exists():
+        try:
+            from score_job_fit import save_scored_jobs
+            save_scored_jobs(merged)
+        except Exception:
+            pass
     else:
         print("\nNo user_profile.yaml found - skipping job fit scoring.")
 

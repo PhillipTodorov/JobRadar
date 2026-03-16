@@ -286,8 +286,8 @@ footer {
   margin-top: 16px;
   padding-top: 12px;
   border-top: 1px solid #3f3f46;
-  font-size: 11px;
-  color: #71717a;
+  font-size: 12px;
+  color: #a1a1aa;
   text-align: center;
 }
 
@@ -296,7 +296,7 @@ footer .connected {
 }
 
 footer .error {
-  color: #f87171;
+  color: #fb923c;
   background: none;
   border: none;
   padding: 0;

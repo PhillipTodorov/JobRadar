@@ -59,6 +59,7 @@ async function initialize() {
   populatePersonalInfoForm();
   populateQAList(allQuestions);
   loadBackendSettings();
+  loadGistSettings();
 }
 
 function setupEventListeners() {
@@ -139,6 +140,9 @@ async function saveDatabank() {
   if (settings.backend_enabled && settings.auto_sync) {
     syncToBackend();
   }
+
+  // Auto-sync to gist if enabled
+  gistAutoSyncPush();
 }
 
 function createEmptyDatabank() {
@@ -438,6 +442,173 @@ async function syncToBackend() {
     }
   } catch (e) {
     console.log('Backend sync failed (will retry later):', e.message);
+  }
+}
+
+// =====================
+// Gist Sync
+// =====================
+
+const GIST_FILE = 'jobradar_extension_config.json';
+
+const gistTokenInput = document.getElementById('gistToken');
+const gistIdInput = document.getElementById('gistId');
+const gistAutoSyncCheckbox = document.getElementById('gistAutoSync');
+const gistPushBtn = document.getElementById('gistPushBtn');
+const gistPullBtn = document.getElementById('gistPullBtn');
+const gistSaveBtn = document.getElementById('gistSaveBtn');
+const gistStatusEl = document.getElementById('gistStatus');
+
+// Event listeners for gist buttons
+gistPushBtn.addEventListener('click', gistPush);
+gistPullBtn.addEventListener('click', gistPull);
+gistSaveBtn.addEventListener('click', saveGistSettings);
+
+async function loadGistSettings() {
+  const storage = await chrome.storage.local.get(['gist_settings']);
+  const gs = storage.gist_settings || {};
+  gistTokenInput.value = gs.token || '';
+  gistIdInput.value = gs.gist_id || '';
+  gistAutoSyncCheckbox.checked = gs.auto_sync !== false;
+}
+
+async function saveGistSettings() {
+  const gs = {
+    token: gistTokenInput.value.trim(),
+    gist_id: gistIdInput.value.trim(),
+    auto_sync: gistAutoSyncCheckbox.checked
+  };
+  await chrome.storage.local.set({ gist_settings: gs });
+  gistStatusEl.textContent = 'Gist settings saved.';
+}
+
+async function gistPush() {
+  const token = gistTokenInput.value.trim();
+  if (!token) { gistStatusEl.textContent = 'Enter a GitHub token first.'; return; }
+
+  gistStatusEl.textContent = 'Pushing...';
+  gistPushBtn.disabled = true;
+
+  try {
+    // Gather all extension data
+    const storage = await chrome.storage.local.get(['qa_databank', 'settings']);
+    const payload = {
+      qa_databank: storage.qa_databank || {},
+      settings: storage.settings || {},
+      synced_at: new Date().toISOString()
+    };
+
+    const gistId = gistIdInput.value.trim();
+    const files = { [GIST_FILE]: { content: JSON.stringify(payload, null, 2) } };
+
+    let response;
+    if (gistId) {
+      // Update existing gist
+      response = await fetch(`https://api.github.com/gists/${gistId}`, {
+        method: 'PATCH',
+        headers: { Authorization: `token ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files })
+      });
+    } else {
+      // Create new private gist
+      response = await fetch('https://api.github.com/gists', {
+        method: 'POST',
+        headers: { Authorization: `token ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: 'JobRadar Extension Config', public: false, files })
+      });
+    }
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.message || response.statusText);
+    }
+
+    const data = await response.json();
+
+    // Save gist ID if newly created
+    if (!gistId && data.id) {
+      gistIdInput.value = data.id;
+    }
+    await saveGistSettings();
+
+    gistStatusEl.textContent = `Pushed at ${new Date().toLocaleTimeString()}`;
+  } catch (e) {
+    gistStatusEl.textContent = `Push failed: ${e.message}`;
+  } finally {
+    gistPushBtn.disabled = false;
+  }
+}
+
+async function gistPull() {
+  const token = gistTokenInput.value.trim();
+  const gistId = gistIdInput.value.trim();
+  if (!token || !gistId) { gistStatusEl.textContent = 'Token and Gist ID required.'; return; }
+
+  gistStatusEl.textContent = 'Pulling...';
+  gistPullBtn.disabled = true;
+
+  try {
+    const response = await fetch(`https://api.github.com/gists/${gistId}`, {
+      headers: { Authorization: `token ${token}` }
+    });
+
+    if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
+
+    const data = await response.json();
+    const fileData = data.files[GIST_FILE];
+    if (!fileData) throw new Error(`File "${GIST_FILE}" not found in gist.`);
+
+    const payload = JSON.parse(fileData.content);
+
+    if (!confirm('Replace local data with gist data?')) {
+      gistStatusEl.textContent = 'Pull cancelled.';
+      return;
+    }
+
+    // Restore databank
+    if (payload.qa_databank) {
+      currentDatabank = payload.qa_databank;
+      await chrome.storage.local.set({ qa_databank: currentDatabank });
+      allQuestions = Object.entries(currentDatabank.questions || {});
+      populatePersonalInfoForm();
+      populateQAList(allQuestions);
+    }
+
+    // Restore settings
+    if (payload.settings) {
+      await chrome.storage.local.set({ settings: payload.settings });
+      loadBackendSettings();
+    }
+
+    gistStatusEl.textContent = `Pulled at ${new Date().toLocaleTimeString()}`;
+  } catch (e) {
+    gistStatusEl.textContent = `Pull failed: ${e.message}`;
+  } finally {
+    gistPullBtn.disabled = false;
+  }
+}
+
+async function gistAutoSyncPush() {
+  const storage = await chrome.storage.local.get(['gist_settings']);
+  const gs = storage.gist_settings || {};
+  if (!gs.auto_sync || !gs.token || !gs.gist_id) return;
+
+  try {
+    const data = await chrome.storage.local.get(['qa_databank', 'settings']);
+    const payload = {
+      qa_databank: data.qa_databank || {},
+      settings: data.settings || {},
+      synced_at: new Date().toISOString()
+    };
+
+    await fetch(`https://api.github.com/gists/${gs.gist_id}`, {
+      method: 'PATCH',
+      headers: { Authorization: `token ${gs.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(payload, null, 2) } } })
+    });
+    console.log('Auto-synced to gist');
+  } catch (e) {
+    console.log('Gist auto-sync failed:', e.message);
   }
 }
 

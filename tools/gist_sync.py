@@ -262,6 +262,45 @@ def get_sync_status():
     return result
 
 
+def read_gist_file(filename):
+    """Read a single file's content from the gist. Returns string or None."""
+    token = _get_token()
+    gist_id = _get_gist_id()
+    if not token or not gist_id:
+        return None
+    try:
+        resp = requests.get(
+            f"{API_BASE}/gists/{gist_id}",
+            headers=_headers(token),
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            files = resp.json().get("files", {})
+            if filename in files:
+                return files[filename]["content"]
+    except Exception:
+        pass
+    return None
+
+
+def update_gist_file(filename, content):
+    """Update (or create) a single file in the gist. Returns True on success."""
+    token = _get_token()
+    gist_id = _get_gist_id()
+    if not token or not gist_id:
+        return False
+    try:
+        resp = requests.patch(
+            f"{API_BASE}/gists/{gist_id}",
+            headers=_headers(token),
+            json={"files": {filename: {"content": content}}},
+            timeout=10,
+        )
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
 def auto_push():
     """Silent push for use after save operations. Never raises."""
     try:

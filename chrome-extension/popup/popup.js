@@ -102,11 +102,11 @@ async function initialize() {
 function showWelcomeMessage() {
   const welcomeEl = document.createElement('div');
   welcomeEl.className = 'welcome-banner';
-  welcomeEl.style.cssText = 'background: #e3f2fd; border: 1px solid #2196f3; border-radius: 8px; padding: 16px; margin-bottom: 16px;';
+  welcomeEl.style.cssText = 'background: #1e293b; border: 1px solid #3b82f6; border-radius: 8px; padding: 16px; margin-bottom: 16px;';
   welcomeEl.innerHTML = `
-    <h3 style="margin: 0 0 8px 0; color: #1976d2; font-size: 16px;">Welcome to JobRadar!</h3>
-    <p style="margin: 0 0 12px 0; font-size: 14px;">Get started by adding your answers to common questions in <a href="settings.html" style="color: #1976d2;">Settings</a>.</p>
-    <p style="margin: 0 0 12px 0; font-size: 14px;">Then use "Copy Page Content" on any job application to auto-fill answers.</p>
+    <h3 style="margin: 0 0 8px 0; color: #60a5fa; font-size: 16px;">Welcome to JobRadar!</h3>
+    <p style="margin: 0 0 12px 0; font-size: 14px; color: #d1d5db;">Get started by adding your answers to common questions in <a href="settings.html" style="color: #60a5fa;">Settings</a>.</p>
+    <p style="margin: 0 0 12px 0; font-size: 14px; color: #d1d5db;">Then use "Copy Page Content" on any job application to auto-fill answers.</p>
     <button id="closeWelcome" class="btn btn-small">Got it!</button>
   `;
 

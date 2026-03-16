@@ -558,6 +558,45 @@ if page == "Overview":
 
     st.divider()
 
+    # ── Phone Inbox ──
+    _ph_col1, _ph_col2 = st.columns([3, 1])
+    with _ph_col1:
+        st.subheader("Phone Inbox")
+    with _ph_col2:
+        _check_inbox = st.button("Check Inbox", use_container_width=True)
+
+    if _check_inbox or "pending_phone_jobs" not in st.session_state:
+        try:
+            sys.path.insert(0, str(TOOLS_DIR))
+            from gist_sync import read_gist_file
+            _raw = read_gist_file("pending_job.txt")
+            if _raw and _raw.strip():
+                st.session_state.pending_phone_jobs = [u.strip() for u in _raw.strip().splitlines() if u.strip()]
+            else:
+                st.session_state.pending_phone_jobs = []
+        except Exception:
+            st.session_state.pending_phone_jobs = []
+
+    _pending_jobs = st.session_state.get("pending_phone_jobs", [])
+    if _pending_jobs:
+        st.info(f"**{len(_pending_jobs)}** job(s) waiting from your phone")
+        for _purl in _pending_jobs[:10]:
+            st.markdown(f"- [{_purl[:60]}{'...' if len(_purl) > 60 else ''}]({_purl})")
+        if st.button("Process All Jobs", type="primary", use_container_width=True):
+            with st.spinner("Scraping and scoring phone jobs..."):
+                code, stdout, stderr = run_tool("process_pending_jobs.py")
+            if code == 0:
+                st.session_state.pending_phone_jobs = []
+                st.success("Done! Jobs added to your list.")
+                st.rerun()
+            else:
+                st.error("Processing failed")
+                st.code(stdout + stderr)
+    else:
+        st.caption("No pending jobs. Share a URL from your iPhone to send jobs here.")
+
+    st.divider()
+
     # ── Quick search ──
     _scored_path = TMP_DIR / "scored_jobs.json"
     _last_str = (
@@ -566,32 +605,52 @@ if page == "Overview":
     )
     st.subheader("Search Jobs")
     st.caption(_last_str)
-    reed_key = os.getenv("REED_API_KEY", "")
-    if not reed_key:
-        st.warning(
-            "Reed API key not set. "
-            "Get a free key at [reed.co.uk/developers/jobseeker](https://www.reed.co.uk/developers/jobseeker) "
-            "then add `REED_API_KEY=your-key` to `.env`."
-        )
-    else:
-        _cfg = load_config()
-        _api_cfg = _cfg.get("api", {})
-        _ov_max = st.slider(
-            "Max results", min_value=25, max_value=500, step=25,
-            value=int(_api_cfg.get("max_results", 100)),
-            key="ov_max_results",
-        )
-        if st.button("Search Reed.co.uk", type="primary", use_container_width=True):
-            if _ov_max != _api_cfg.get("max_results"):
-                _cfg["api"] = {**_api_cfg, "max_results": _ov_max}
+
+    _cfg = load_config()
+    _api_cfg = _cfg.get("api", {})
+    _search_params = _cfg.get("search_params", {})
+
+    _ov_days = st.selectbox(
+        "Posted within",
+        options=[1, 3, 7, 14, 30],
+        index=[1, 3, 7, 14, 30].index(_search_params.get("posted_within_days", 7))
+              if _search_params.get("posted_within_days", 7) in [1, 3, 7, 14, 30] else 2,
+        format_func=lambda x: f"{x} day{'s' if x > 1 else ''}",
+        key="ov_days",
+    )
+
+    # Job API cards — each with its own slider, quota info, and search button
+    _job_apis = [
+        ("Reed", "reed", "REED_API_KEY", "1,000 req/day"),
+        ("Adzuna", "adzuna", "ADZUNA_APP_ID", "Free tier"),
+        ("Jooble", "jooble", "JOOBLE_API_KEY", "Free tier"),
+        ("Careerjet", "careerjet", "CAREERJET_AFFID", "1,000 req/hr"),
+    ]
+    _cols = st.columns(len(_job_apis))
+    for _col, (_label, _site, _env, _quota) in zip(_cols, _job_apis):
+        _has_key = bool(os.getenv(_env, ""))
+        with _col:
+            st.caption(f"Quota: {_quota}")
+            _smax = st.slider(
+                "Max results", min_value=25, max_value=500, step=25,
+                value=int(_api_cfg.get("max_results", 100)),
+                key=f"ov_max_{_site}",
+                disabled=not _has_key,
+            )
+            if st.button(f"Search {_label}", disabled=not _has_key, use_container_width=True, key=f"ov_search_{_site}"):
+                _cfg["api"] = {**_api_cfg, "max_results": _smax}
+                _cfg["search_params"] = {**_search_params, "posted_within_days": _ov_days}
+                _cfg["sites"] = [_site]
                 save_config(_cfg)
-            with st.spinner("Searching Reed for matching jobs…"):
-                code, stdout, stderr = run_tool("run_job_scrape.py")
-            if code == 0:
-                st.success("Done — go to **Jobs** to see results.")
-            else:
-                st.error("Search failed")
-                st.code(stdout + stderr)
+                with st.spinner(f"Searching {_label}…"):
+                    code, stdout, stderr = run_tool("run_job_scrape.py")
+                if code == 0:
+                    st.success("Done — go to **Jobs** to see results.")
+                else:
+                    st.error(f"{_label} search failed")
+                    st.code(stdout + stderr)
+            if not _has_key:
+                st.caption("No key")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -604,12 +663,22 @@ elif page == "Jobs":
     if not jobs:
         st.info("No jobs found yet. Run a search from **Overview** or **Settings**.")
     else:
-        # ── Filters: search + score slider ────────────────────────────────
-        f1, f2 = st.columns([3, 1])
+        # ── Filters: search + score slider + cleanup ──────────────────────
+        f1, f2, f3 = st.columns([3, 1, 0.6])
         with f1:
             search = st.text_input("Search", placeholder="Title or company…", label_visibility="collapsed")
         with f2:
             min_score = st.slider("Min score", 0, 100, 0, step=5)
+        with f3:
+            if st.button("Remove stale", use_container_width=True, help="Remove expired jobs (>30 days) and dead links"):
+                with st.spinner("Checking links…"):
+                    code, stdout, stderr = run_tool("validate_jobs.py")
+                if code == 0:
+                    st.success("Cleanup done")
+                    st.rerun()
+                else:
+                    st.error("Cleanup failed")
+                    st.code(stdout + stderr)
 
         _hidden_urls = load_hidden_jobs()
         filtered = [
@@ -1529,18 +1598,45 @@ elif page == "Settings":
             save_config(new_config)
 
         st.divider()
-        reed_key = os.getenv("REED_API_KEY", "")
-        if not reed_key:
-            st.warning("Reed API key not set. Add `REED_API_KEY=your-key` to `.env`.")
-        if st.button("Search Reed.co.uk", type="primary", disabled=not reed_key):
-            with st.spinner("Searching…"):
-                code, stdout, stderr = run_tool("run_job_scrape.py")
-            if code == 0:
-                st.success("Done — results in **Jobs**")
+        st.subheader("API Keys")
+        _api_keys = {
+            "Reed": ("REED_API_KEY", "https://www.reed.co.uk/developers/jobseeker"),
+            "Adzuna": ("ADZUNA_APP_ID", "https://developer.adzuna.com/"),
+            "Jooble": ("JOOBLE_API_KEY", "https://jooble.org/api/about"),
+            "Careerjet": ("CAREERJET_AFFID", "https://www.careerjet.co.uk/partners/"),
+            "SerpAPI": ("SERPAPI_KEY", "https://serpapi.com/"),
+        }
+        for _name, (_env_var, _url) in _api_keys.items():
+            _val = os.getenv(_env_var, "")
+            if _val:
+                st.success(f"{_name} — configured")
             else:
-                st.error("Search failed")
-            with st.expander("Output", expanded=code != 0):
-                st.code(stdout + stderr)
+                st.warning(f"{_name} — not set. Get a key at [{_url}]({_url}), then add `{_env_var}=your-key` to `.env`.")
+
+        st.divider()
+        st.subheader("Search")
+        _search_apis = [
+            ("Reed", "reed", "REED_API_KEY"),
+            ("Adzuna", "adzuna", "ADZUNA_APP_ID"),
+            ("Jooble", "jooble", "JOOBLE_API_KEY"),
+            ("Careerjet", "careerjet", "CAREERJET_AFFID"),
+        ]
+        _scols = st.columns(len(_search_apis))
+        for _scol, (_slabel, _ssite, _senv) in zip(_scols, _search_apis):
+            _shas = bool(os.getenv(_senv, ""))
+            with _scol:
+                if st.button(_slabel, disabled=not _shas, use_container_width=True, key=f"set_search_{_ssite}"):
+                    _scfg = load_config()
+                    _scfg["sites"] = [_ssite]
+                    save_config(_scfg)
+                    with st.spinner(f"Searching {_slabel}…"):
+                        code, stdout, stderr = run_tool("run_job_scrape.py")
+                    if code == 0:
+                        st.success("Done — results in **Jobs**")
+                    else:
+                        st.error(f"{_slabel} search failed")
+                    with st.expander("Output", expanded=code != 0):
+                        st.code(stdout + stderr)
 
         if st.button("Re-score existing jobs"):
             with st.spinner("Scoring…"):
@@ -1859,3 +1955,98 @@ EMAIL_IMAP_HOST=imap.mail.yahoo.com
                     st.rerun()
                 else:
                     st.error(f"Import failed: {result}")
+
+        st.divider()
+        st.subheader("Phone Inbox Setup")
+        st.caption("Send jobs from your iPhone to JobRadar using an Apple Shortcut.")
+
+        _gist_id = os.getenv("GITHUB_GIST_ID", "")
+        _gist_token = os.getenv("GITHUB_GIST_TOKEN", "")
+
+        if _gist_id and _gist_token:
+            st.success("Gist sync is configured. Follow the steps below to set up your iPhone.")
+        else:
+            st.warning("Set up Gist Sync above first — the iPhone Shortcut needs your Gist ID and token.")
+
+        with st.expander("Apple Shortcut Setup (step by step)"):
+            st.markdown("""
+**Open the Shortcuts app on your iPhone and create a new shortcut.**
+
+---
+
+**Step 1 — Accept the shared URL**
+
+- Tap **Add Action**, search for **"Receive input"** (it may already be there)
+- Set it to accept **URLs**
+- This lets the shortcut appear when you tap Share in Safari
+
+---
+
+**Step 2 — Read what's already in your inbox**
+
+- Add action: **Get Contents of URL**
+- Tap the URL field and set it to:
+""")
+            st.code(f"https://api.github.com/gists/{_gist_id or 'YOUR_GIST_ID'}", language=None)
+            st.markdown("""
+- Tap **Show More**, set Method to **GET**
+- Add a Header: Key = `Authorization`, Value = `Bearer YOUR_TOKEN`
+  (replace YOUR_TOKEN with your GitHub token)
+- Add a Header: Key = `Accept`, Value = `application/vnd.github+json`
+
+---
+
+**Step 3 — Get the current pending list**
+
+- Add action: **Get Dictionary Value**
+- Set it to get value for key: `files.pending_jobs\u200b.txt.content`
+- From: **Contents of URL** (the result from Step 2)
+- This gives you the current list of URLs already in your inbox
+
+---
+
+**Step 4 — Add the new URL to the list**
+
+- Add action: **Text**
+- In the text field, tap and insert:
+  - **Dictionary Value** (from Step 3)
+  - Then a new line
+  - Then **Shortcut Input** (the URL you shared)
+- This creates the old list + your new URL on a new line
+
+---
+
+**Step 5 — Send it back to the cloud**
+
+- Add action: **Get Contents of URL**
+- URL:
+""")
+            st.code(f"https://api.github.com/gists/{_gist_id or 'YOUR_GIST_ID'}", language=None)
+            st.markdown("""
+- Tap **Show More**, set Method to **PATCH**
+- Add Header: `Authorization` = `Bearer YOUR_TOKEN`
+- Add Header: `Content-Type` = `application/json`
+- Set **Request Body** to **JSON**
+- Build this structure:
+  - Key: `files` (type: Dictionary)
+    - Inside `files`, Key: `pending_job.txt` (type: Dictionary)
+      - Inside that, Key: `content` (type: Text) = **the Text from Step 4**
+
+---
+
+**Step 6 — Show confirmation**
+
+- Add action: **Show Notification**
+- Set the text to: `Sent to JobRadar!`
+
+---
+
+**Done! Name it "Send to JobRadar" and you're set.**
+
+To use it: find a job on Safari → tap **Share** → tap **Send to JobRadar**.
+Then open the Streamlit app and check your Phone Inbox on the Overview page.
+""")
+        if _gist_id:
+            st.code(f"Your Gist ID: {_gist_id}", language=None)
+        if _gist_token:
+            st.code(f"Your token starts with: {_gist_token[:8]}...", language=None)
